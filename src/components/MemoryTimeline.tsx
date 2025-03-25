@@ -227,6 +227,15 @@ const MemoryTimeline: React.FC = () => {
     toast.success("New memory added!");
   };
   
+  // Create a form for adding new memories
+  const addForm = useForm<MemoryFormValues>({
+    defaultValues: {
+      date: '',
+      title: '',
+      description: ''
+    }
+  });
+  
   return (
     <div className="w-full max-w-4xl mx-auto py-10 px-4">
       <h2 className="text-3xl font-semibold text-center mb-12">Our Memories</h2>
@@ -267,68 +276,60 @@ const MemoryTimeline: React.FC = () => {
             <DialogTitle>Add New Memory</DialogTitle>
           </DialogHeader>
           
-          <Form {...useForm<MemoryFormValues>({
-            defaultValues: {
-              date: '',
-              title: '',
-              description: ''
-            }
-          })}>
-            {({ register, handleSubmit }) => (
-              <form onSubmit={handleSubmit(addNewMemory)} className="space-y-4 mt-4">
-                <FormField
-                  control={register}
-                  name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g., May 20, 2018" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={register}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Title</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Memory title" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={register}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          {...field} 
-                          placeholder="Describe this memory..." 
-                          className="min-h-[100px]"
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                    <X className="mr-2 h-4 w-4" /> Cancel
-                  </Button>
-                  <Button type="submit">
-                    <Save className="mr-2 h-4 w-4" /> Save Memory
-                  </Button>
-                </div>
-              </form>
-            )}
+          <Form {...addForm}>
+            <form onSubmit={addForm.handleSubmit(addNewMemory)} className="space-y-4 mt-4">
+              <FormField
+                control={addForm.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g., May 20, 2018" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Memory title" />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        {...field} 
+                        placeholder="Describe this memory..." 
+                        className="min-h-[100px]"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  <X className="mr-2 h-4 w-4" /> Cancel
+                </Button>
+                <Button type="submit">
+                  <Save className="mr-2 h-4 w-4" /> Save Memory
+                </Button>
+              </div>
+            </form>
           </Form>
         </DialogContent>
       </Dialog>
