@@ -40,6 +40,11 @@ export const getNextAnniversary = (): Date => {
     anniversaryDate = new Date(currentYear + 1, 4, 20);
   }
   
+  // Ensure the year is at least 2025
+  if (anniversaryDate.getFullYear() < 2025) {
+    anniversaryDate.setFullYear(2025);
+  }
+  
   return anniversaryDate;
 };
 
