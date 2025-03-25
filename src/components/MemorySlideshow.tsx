@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { 
@@ -9,7 +8,8 @@ import {
   CarouselPrevious
 } from '@/components/ui/carousel';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MapPin } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Calendar, MapPin, Pause, Play } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
@@ -35,7 +35,6 @@ const MemorySlideshow = () => {
       try {
         setLoading(true);
         
-        // Fetch memory details with metadata
         const { data: memoryDetails, error: detailsError } = await supabase
           .from('memory_details')
           .select('*')
@@ -46,7 +45,6 @@ const MemorySlideshow = () => {
         }
         
         if (!memoryDetails || memoryDetails.length === 0) {
-          // If no memory details exist, try to fetch directly from storage
           const { data: storageFiles, error: storageError } = await supabase
             .storage
             .from('memories')
@@ -57,12 +55,10 @@ const MemorySlideshow = () => {
           }
           
           if (storageFiles && storageFiles.length > 0) {
-            // Filter only image files
             const imageFiles = storageFiles.filter(file => 
               file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
             );
             
-            // Create memory objects from storage files
             const memoryImages: MemoryImage[] = imageFiles.map(file => ({
               id: file.id,
               url: `${supabase.storage.from('memories').getPublicUrl(file.name).data.publicUrl}`,
@@ -76,7 +72,6 @@ const MemorySlideshow = () => {
             setMemories(memoryImages);
           }
         } else {
-          // Create memory objects from detailed records
           const memoryImages: MemoryImage[] = await Promise.all(
             memoryDetails.map(async detail => {
               const { data: publicUrlData } = supabase
@@ -109,7 +104,6 @@ const MemorySlideshow = () => {
     fetchMemories();
   }, []);
 
-  // Set up autoplay for the slideshow
   useEffect(() => {
     if (!autoplayEnabled || memories.length <= 1) return;
     
@@ -122,7 +116,6 @@ const MemorySlideshow = () => {
     return () => clearInterval(interval);
   }, [memories.length, autoplayEnabled]);
 
-  // If no images are uploaded yet, show a placeholder
   if (memories.length === 0 && !loading) {
     return (
       <div className="w-full max-w-4xl mx-auto py-6 px-4">
@@ -154,7 +147,6 @@ const MemorySlideshow = () => {
           <Carousel 
             className="w-full"
             onSelect={(index) => {
-              // Fix: Properly handle the index passed from the Carousel component
               if (typeof index === 'number') {
                 setCurrentIndex(index);
               }
@@ -214,9 +206,19 @@ const MemorySlideshow = () => {
               variant="ghost" 
               size="sm"
               onClick={() => setAutoplayEnabled(!autoplayEnabled)}
-              className="text-sm"
+              className="text-sm flex items-center gap-1"
             >
-              {autoplayEnabled ? "Pause Slideshow" : "Auto Play"}
+              {autoplayEnabled ? (
+                <>
+                  <Pause className="h-3 w-3" />
+                  Pause Slideshow
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3" />
+                  Auto Play
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -226,20 +228,3 @@ const MemorySlideshow = () => {
 };
 
 export default MemorySlideshow;
-
-function Button({ children, variant, size, onClick, className }: { 
-  children: React.ReactNode; 
-  variant?: string;
-  size?: string;
-  onClick?: () => void;
-  className?: string;
-}) {
-  return (
-    <button 
-      onClick={onClick} 
-      className={`px-3 py-1 rounded hover:bg-gray-200/10 transition-colors ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
