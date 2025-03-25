@@ -17,7 +17,7 @@ const Index = () => {
     <Layout>
       <AnniversaryAnimation isAnniversaryDay={isAnniversaryDay} />
       
-      <div className="space-y-20">
+      <div className="space-y-16">
         <section className="neu-element p-6 sm:p-10">
           <Countdown />
         </section>

@@ -101,6 +101,39 @@ export type Database = {
           },
         ]
       }
+      memory_details: {
+        Row: {
+          created_at: string | null
+          date_taken: string | null
+          description: string | null
+          display_name: string
+          file_name: string
+          id: string
+          location: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date_taken?: string | null
+          description?: string | null
+          display_name: string
+          file_name: string
+          id?: string
+          location?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date_taken?: string | null
+          description?: string | null
+          display_name?: string
+          file_name?: string
+          id?: string
+          location?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
