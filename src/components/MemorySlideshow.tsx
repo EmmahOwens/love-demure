@@ -153,7 +153,12 @@ const MemorySlideshow = () => {
         <div className="neu-element p-6">
           <Carousel 
             className="w-full"
-            onSelect={(index) => setCurrentIndex(index)}
+            onSelect={(index) => {
+              // Fix: Properly handle the index passed from the Carousel component
+              if (typeof index === 'number') {
+                setCurrentIndex(index);
+              }
+            }}
           >
             <CarouselContent>
               {memories.map((memory, index) => (

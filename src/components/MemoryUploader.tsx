@@ -95,13 +95,14 @@ const MemoryUploader = () => {
       }
       
       // Store metadata in the memory_details table
+      // Fix: Convert dateTaken to ISO string format for database insertion
       const { error: metadataError } = await supabase
         .from('memory_details')
         .insert({
           file_name: fileName,
           display_name: formData.displayName,
           description: formData.description || null,
-          date_taken: formData.dateTaken ? new Date(formData.dateTaken) : null,
+          date_taken: formData.dateTaken ? formData.dateTaken : null, // Fix: Keep as string
           location: formData.location || null
         });
         
