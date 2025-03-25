@@ -8,6 +8,7 @@ import AnniversaryAnimation from '../components/AnniversaryAnimation';
 import MemorySlideshow from '../components/MemorySlideshow';
 import MemoryUploader from '../components/MemoryUploader';
 import { useCountdown } from '../hooks/useCountdown';
+import ScrollRevealSection from '../components/ScrollRevealSection';
 
 const Index = () => {
   const { timeLeft } = useCountdown();
@@ -18,25 +19,35 @@ const Index = () => {
       <AnniversaryAnimation isAnniversaryDay={isAnniversaryDay} />
       
       <div className="space-y-16">
-        <section className="neu-element p-6 sm:p-10">
-          <Countdown />
-        </section>
+        <ScrollRevealSection direction="up" delay={0}>
+          <section className="neu-element p-6 sm:p-10">
+            <Countdown />
+          </section>
+        </ScrollRevealSection>
         
-        <section className="neu-element p-6 sm:p-10">
-          <MemorySlideshow />
-        </section>
+        <ScrollRevealSection direction="up" delay={100}>
+          <section className="neu-element p-6 sm:p-10">
+            <MemorySlideshow />
+          </section>
+        </ScrollRevealSection>
         
-        <section className="neu-element p-6 sm:p-10">
-          <MemoryUploader />
-        </section>
+        <ScrollRevealSection direction="up" delay={200}>
+          <section className="neu-element p-6 sm:p-10">
+            <MemoryUploader />
+          </section>
+        </ScrollRevealSection>
         
-        <section className="neu-element p-6 sm:p-10">
-          <MemoryTimeline />
-        </section>
+        <ScrollRevealSection direction="up" delay={300}>
+          <section className="neu-element p-6 sm:p-10">
+            <MemoryTimeline />
+          </section>
+        </ScrollRevealSection>
         
-        <section className="neu-element p-6 sm:p-10">
-          <LoveNotes />
-        </section>
+        <ScrollRevealSection direction="up" delay={400}>
+          <section className="neu-element p-6 sm:p-10">
+            <LoveNotes />
+          </section>
+        </ScrollRevealSection>
       </div>
     </Layout>
   );
