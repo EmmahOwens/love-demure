@@ -1,6 +1,21 @@
 
 import React, { useState } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, PenLine, Plus, Save, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+
+interface Memory {
+  id: number;
+  date: string;
+  title: string;
+  description: string;
+  imageUrl?: string;
+}
 
 // Sample memories data - you can replace with your own
 const defaultMemories = [
@@ -34,20 +49,114 @@ const defaultMemories = [
   }
 ];
 
-interface Memory {
-  id: number;
+interface MemoryFormValues {
   date: string;
   title: string;
   description: string;
-  imageUrl?: string;
 }
 
-const MemoryCard: React.FC<{ memory: Memory; index: number }> = ({ memory, index }) => {
+const MemoryEditDialog = ({ memory, onSave, onClose }: { 
+  memory: Memory, 
+  onSave: (id: number, data: MemoryFormValues) => void,
+  onClose: () => void 
+}) => {
+  const form = useForm<MemoryFormValues>({
+    defaultValues: {
+      date: memory.date,
+      title: memory.title,
+      description: memory.description
+    }
+  });
+
+  const handleSubmit = (data: MemoryFormValues) => {
+    onSave(memory.id, data);
+    onClose();
+  };
+
+  return (
+    <DialogContent className="sm:max-w-[425px]">
+      <DialogHeader>
+        <DialogTitle>Edit Memory</DialogTitle>
+      </DialogHeader>
+      
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 mt-4">
+          <FormField
+            control={form.control}
+            name="date"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Date</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="e.g., May 20, 2018" />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="title"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Title</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="Memory title" />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl>
+                  <Textarea 
+                    {...field} 
+                    placeholder="Describe this memory..." 
+                    className="min-h-[100px]"
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              <X className="mr-2 h-4 w-4" /> Cancel
+            </Button>
+            <Button type="submit">
+              <Save className="mr-2 h-4 w-4" /> Save Changes
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </DialogContent>
+  );
+};
+
+const MemoryCard: React.FC<{ 
+  memory: Memory; 
+  index: number;
+  onEdit: (memory: Memory) => void;
+}> = ({ memory, index, onEdit }) => {
   const isEven = index % 2 === 0;
   
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
-      <div className={`neu-element p-6 max-w-md animate-fade-in`} style={{ animationDelay: `${index * 0.1}s` }}>
+      <div className={`neu-element p-6 max-w-md animate-fade-in relative group`} style={{ animationDelay: `${index * 0.1}s` }}>
+        <Button 
+          variant="ghost" 
+          size="icon"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={() => onEdit(memory)}
+        >
+          <PenLine size={16} />
+        </Button>
+        
         <div className="mb-2 text-sm text-muted-foreground">{memory.date}</div>
         <h3 className="text-xl font-semibold mb-2">{memory.title}</h3>
         <p className="text-foreground/80">{memory.description}</p>
@@ -68,8 +177,55 @@ const MemoryCard: React.FC<{ memory: Memory; index: number }> = ({ memory, index
   );
 };
 
+const AddMemoryButton = ({ onClick }: { onClick: () => void }) => {
+  return (
+    <div className="flex justify-center my-10">
+      <Button onClick={onClick} className="gap-2">
+        <Plus size={16} />
+        Add Memory
+      </Button>
+    </div>
+  );
+};
+
 const MemoryTimeline: React.FC = () => {
-  const [memories] = useState<Memory[]>(defaultMemories);
+  const [memories, setMemories] = useState<Memory[]>(defaultMemories);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
+  
+  const handleAddMemory = () => {
+    setIsAddDialogOpen(true);
+  };
+  
+  const handleEditMemory = (memory: Memory) => {
+    setEditingMemory(memory);
+  };
+  
+  const handleSaveMemory = (id: number, data: MemoryFormValues) => {
+    setMemories(prevMemories => 
+      prevMemories.map(memory => 
+        memory.id === id 
+          ? { ...memory, ...data } 
+          : memory
+      )
+    );
+    toast.success("Memory updated successfully!");
+  };
+  
+  const handleCloseEdit = () => {
+    setEditingMemory(null);
+  };
+
+  const addNewMemory = (data: MemoryFormValues) => {
+    const newMemory = {
+      id: Date.now(), // Simple ID generation
+      ...data
+    };
+    
+    setMemories(prev => [...prev, newMemory]);
+    setIsAddDialogOpen(false);
+    toast.success("New memory added!");
+  };
   
   return (
     <div className="w-full max-w-4xl mx-auto py-10 px-4">
@@ -81,11 +237,101 @@ const MemoryTimeline: React.FC = () => {
         
         {/* Memories */}
         {memories.map((memory, index) => (
-          <MemoryCard key={memory.id} memory={memory} index={index} />
+          <MemoryCard 
+            key={memory.id} 
+            memory={memory} 
+            index={index} 
+            onEdit={handleEditMemory}
+          />
         ))}
         
-        {/* Add memory form would go here */}
+        {/* Add memory button */}
+        <AddMemoryButton onClick={handleAddMemory} />
       </div>
+      
+      {/* Edit dialog */}
+      {editingMemory && (
+        <Dialog open={!!editingMemory} onOpenChange={(open) => !open && handleCloseEdit()}>
+          <MemoryEditDialog 
+            memory={editingMemory} 
+            onSave={handleSaveMemory}
+            onClose={handleCloseEdit}
+          />
+        </Dialog>
+      )}
+      
+      {/* Add dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add New Memory</DialogTitle>
+          </DialogHeader>
+          
+          <Form {...useForm<MemoryFormValues>({
+            defaultValues: {
+              date: '',
+              title: '',
+              description: ''
+            }
+          })}>
+            {({ register, handleSubmit }) => (
+              <form onSubmit={handleSubmit(addNewMemory)} className="space-y-4 mt-4">
+                <FormField
+                  control={register}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., May 20, 2018" />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={register}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Memory title" />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={register}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          {...field} 
+                          placeholder="Describe this memory..." 
+                          className="min-h-[100px]"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                    <X className="mr-2 h-4 w-4" /> Cancel
+                  </Button>
+                  <Button type="submit">
+                    <Save className="mr-2 h-4 w-4" /> Save Memory
+                  </Button>
+                </div>
+              </form>
+            )}
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
