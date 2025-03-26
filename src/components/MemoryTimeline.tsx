@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { DatePicker } from '@/components/ui/date-picker';
+import { parse, format } from 'date-fns';
 
 interface Memory {
   id: number;
@@ -15,6 +17,7 @@ interface Memory {
   title: string;
   description: string;
   imageUrl?: string;
+  rawDate?: Date;
 }
 
 // Sample memories data - you can replace with your own
@@ -24,33 +27,37 @@ const defaultMemories = [
     date: 'May 20, 2018',
     title: 'Our First Date',
     description: 'We went to that cute café downtown and talked for hours.',
-    imageUrl: '' // Add image URL if you have one
+    imageUrl: '',
+    rawDate: new Date(2018, 4, 20)
   },
   {
     id: 2,
     date: 'December 25, 2018',
     title: 'First Christmas Together',
     description: 'Remember that ugly sweater you wore? Still makes me smile!',
-    imageUrl: ''
+    imageUrl: '',
+    rawDate: new Date(2018, 11, 25)
   },
   {
     id: 3,
     date: 'May 20, 2019',
     title: 'One Year Anniversary',
     description: 'That surprise picnic in the park was perfect.',
-    imageUrl: ''
+    imageUrl: '',
+    rawDate: new Date(2019, 4, 20)
   },
   {
     id: 4,
     date: 'May 20, 2023',
     title: 'Five Years Together',
     description: 'The journey continues to be amazing with you.',
-    imageUrl: ''
+    imageUrl: '',
+    rawDate: new Date(2023, 4, 20)
   }
 ];
 
 interface MemoryFormValues {
-  date: string;
+  date: Date | undefined;
   title: string;
   description: string;
 }
@@ -62,7 +69,7 @@ const MemoryEditDialog = ({ memory, onSave, onClose }: {
 }) => {
   const form = useForm<MemoryFormValues>({
     defaultValues: {
-      date: memory.date,
+      date: memory.rawDate || new Date(),
       title: memory.title,
       description: memory.description
     }
@@ -88,7 +95,11 @@ const MemoryEditDialog = ({ memory, onSave, onClose }: {
               <FormItem>
                 <FormLabel>Date</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="e.g., May 20, 2018" />
+                  <DatePicker 
+                    date={field.value} 
+                    setDate={field.onChange} 
+                    label="Select date" 
+                  />
                 </FormControl>
               </FormItem>
             )}
@@ -147,7 +158,8 @@ const MemoryCard: React.FC<{
   
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
-      <div className={`neu-element p-6 max-w-md animate-fade-in relative group`} style={{ animationDelay: `${index * 0.1}s` }}>
+      <div className={`neu-element p-6 max-w-md animate-fade-in relative group transform transition-all duration-500 hover:shadow-lg hover:-translate-y-1`} 
+        style={{ animationDelay: `${index * 0.1}s` }}>
         <Button 
           variant="ghost" 
           size="icon"
@@ -165,12 +177,12 @@ const MemoryCard: React.FC<{
           <img 
             src={memory.imageUrl} 
             alt={memory.title} 
-            className="w-full h-40 object-cover rounded-lg mt-4"
+            className="w-full h-40 object-cover rounded-lg mt-4 transition-transform duration-500 hover:scale-105"
           />
         )}
         
         <div className="flex justify-end mt-4">
-          <Heart size={18} className="text-primary" fill="currentColor" />
+          <Heart size={18} className="text-primary animate-heart-beat" fill="currentColor" />
         </div>
       </div>
     </div>
@@ -180,7 +192,7 @@ const MemoryCard: React.FC<{
 const AddMemoryButton = ({ onClick }: { onClick: () => void }) => {
   return (
     <div className="flex justify-center my-10">
-      <Button onClick={onClick} className="gap-2">
+      <Button onClick={onClick} className="gap-2 transition-transform duration-300 hover:scale-105">
         <Plus size={16} />
         Add Memory
       </Button>
@@ -202,10 +214,18 @@ const MemoryTimeline: React.FC = () => {
   };
   
   const handleSaveMemory = (id: number, data: MemoryFormValues) => {
+    if (!data.date) return;
+    
     setMemories(prevMemories => 
       prevMemories.map(memory => 
         memory.id === id 
-          ? { ...memory, ...data } 
+          ? { 
+              ...memory, 
+              title: data.title,
+              description: data.description,
+              date: format(data.date, 'MMMM d, yyyy'),
+              rawDate: data.date
+            } 
           : memory
       )
     );
@@ -217,9 +237,15 @@ const MemoryTimeline: React.FC = () => {
   };
 
   const addNewMemory = (data: MemoryFormValues) => {
+    if (!data.date) return;
+    
     const newMemory = {
-      id: Date.now(), // Simple ID generation
-      ...data
+      id: Date.now(),
+      title: data.title,
+      description: data.description,
+      date: format(data.date, 'MMMM d, yyyy'),
+      rawDate: data.date,
+      imageUrl: ''
     };
     
     setMemories(prev => [...prev, newMemory]);
@@ -230,7 +256,7 @@ const MemoryTimeline: React.FC = () => {
   // Create a form for adding new memories
   const addForm = useForm<MemoryFormValues>({
     defaultValues: {
-      date: '',
+      date: new Date(),
       title: '',
       description: ''
     }
@@ -285,7 +311,11 @@ const MemoryTimeline: React.FC = () => {
                   <FormItem>
                     <FormLabel>Date</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., May 20, 2018" />
+                      <DatePicker 
+                        date={field.value} 
+                        setDate={field.onChange} 
+                        label="Select date" 
+                      />
                     </FormControl>
                   </FormItem>
                 )}

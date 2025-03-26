@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { 
@@ -160,11 +161,16 @@ const MemorySlideshow = () => {
                       <img
                         src={memory.url}
                         alt={memory.displayName}
-                        className="object-cover w-full h-full transition-all duration-700 animate-fade-in"
+                        className="object-cover w-full h-full transition-transform duration-1000 hover:scale-105 animate-fade-in"
+                        style={{ 
+                          animationDelay: `${index * 0.2}s`,
+                          animationDuration: '0.8s'
+                        }}
                       />
                     </AspectRatio>
                     
-                    <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white rounded-b-xl">
+                    <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white rounded-b-xl transform transition-transform duration-500 animate-fade-in"
+                      style={{ animationDelay: `${index * 0.2 + 0.3}s` }}>
                       <h3 className="font-semibold text-lg">{memory.displayName}</h3>
                       
                       {memory.description && (
@@ -193,8 +199,8 @@ const MemorySlideshow = () => {
                 </CarouselItem>
               ))}
             </CarouselContent>
-            <CarouselPrevious className="left-2" />
-            <CarouselNext className="right-2" />
+            <CarouselPrevious className="left-2 bg-black/20 text-white hover:bg-black/40 transition-all" />
+            <CarouselNext className="right-2 bg-black/20 text-white hover:bg-black/40 transition-all" />
           </Carousel>
           
           <div className="mt-4 flex justify-between items-center">

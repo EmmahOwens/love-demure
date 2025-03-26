@@ -7,11 +7,12 @@ import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface MemoryFormData {
   displayName: string;
   description: string;
-  dateTaken: string;
+  dateTaken: Date | undefined;
   location: string;
 }
 
@@ -22,7 +23,7 @@ const MemoryUploader = () => {
   const [formData, setFormData] = useState<MemoryFormData>({
     displayName: '',
     description: '',
-    dateTaken: new Date().toISOString().split('T')[0],
+    dateTaken: new Date(),
     location: '',
   });
   const { toast } = useToast();
@@ -75,8 +76,22 @@ const MemoryUploader = () => {
     }));
   };
 
+  const handleDateChange = (date: Date | undefined) => {
+    setFormData(prev => ({
+      ...prev,
+      dateTaken: date
+    }));
+  };
+
   const handleUpload = async () => {
-    if (!selectedFile || !formData.displayName) return;
+    if (!selectedFile || !formData.displayName || !formData.dateTaken) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a title and date for your memory",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
       setUploading(true);
@@ -95,14 +110,13 @@ const MemoryUploader = () => {
       }
       
       // Store metadata in the memory_details table
-      // Fix: Convert dateTaken to ISO string format for database insertion
       const { error: metadataError } = await supabase
         .from('memory_details')
         .insert({
           file_name: fileName,
           display_name: formData.displayName,
           description: formData.description || null,
-          date_taken: formData.dateTaken ? formData.dateTaken : null, // Fix: Keep as string
+          date_taken: formData.dateTaken.toISOString(),
           location: formData.location || null
         });
         
@@ -121,7 +135,7 @@ const MemoryUploader = () => {
       setFormData({
         displayName: '',
         description: '',
-        dateTaken: new Date().toISOString().split('T')[0],
+        dateTaken: new Date(),
         location: '',
       });
       
@@ -190,11 +204,11 @@ const MemoryUploader = () => {
             </div>
             
             {preview && (
-              <div className="relative aspect-video rounded-md overflow-hidden border border-border">
+              <div className="relative aspect-video rounded-md overflow-hidden border border-border transition-all duration-300 transform hover:shadow-lg">
                 <img 
                   src={preview} 
                   alt="Preview" 
-                  className="object-cover w-full h-full"
+                  className="object-cover w-full h-full transition-transform duration-500 hover:scale-105"
                 />
               </div>
             )}
@@ -211,6 +225,7 @@ const MemoryUploader = () => {
                 placeholder="Give this memory a name"
                 disabled={uploading}
                 required
+                className="transition duration-300 focus:ring-2 focus:ring-primary/20"
               />
             </div>
             
@@ -224,6 +239,7 @@ const MemoryUploader = () => {
                 placeholder="What makes this memory special?"
                 disabled={uploading}
                 rows={3}
+                className="transition duration-300 focus:ring-2 focus:ring-primary/20"
               />
             </div>
             
@@ -233,13 +249,10 @@ const MemoryUploader = () => {
                   <Calendar size={14} />
                   Date Taken
                 </Label>
-                <Input
-                  id="dateTaken"
-                  name="dateTaken"
-                  type="date"
-                  value={formData.dateTaken}
-                  onChange={handleInputChange}
-                  disabled={uploading}
+                <DatePicker 
+                  date={formData.dateTaken} 
+                  setDate={handleDateChange} 
+                  label="Select date"
                 />
               </div>
               
@@ -255,14 +268,15 @@ const MemoryUploader = () => {
                   onChange={handleInputChange}
                   placeholder="Where was this taken?"
                   disabled={uploading}
+                  className="transition duration-300 focus:ring-2 focus:ring-primary/20"
                 />
               </div>
             </div>
             
             <Button
               onClick={handleUpload}
-              disabled={!selectedFile || !formData.displayName || uploading}
-              className="w-full mt-2"
+              disabled={!selectedFile || !formData.displayName || !formData.dateTaken || uploading}
+              className="w-full mt-2 transition-all duration-300 hover:shadow-md"
             >
               {uploading ? "Uploading..." : "Upload Memory"}
             </Button>
