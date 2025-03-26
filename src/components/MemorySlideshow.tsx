@@ -10,9 +10,10 @@ import {
 } from '@/components/ui/carousel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, MapPin, Pause, Play } from 'lucide-react';
+import { Calendar, MapPin, Pause, Play, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface MemoryImage {
   id: string;
@@ -60,14 +61,21 @@ const MemorySlideshow = () => {
               file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
             );
             
-            const memoryImages: MemoryImage[] = imageFiles.map(file => ({
-              id: file.id,
-              url: `${supabase.storage.from('memories').getPublicUrl(file.name).data.publicUrl}`,
-              fileName: file.name,
-              displayName: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, ' '),
-              description: null,
-              dateTaken: null,
-              location: null
+            const memoryImages: MemoryImage[] = await Promise.all(imageFiles.map(async file => {
+              const { data: publicUrlData } = supabase
+                .storage
+                .from('memories')
+                .getPublicUrl(file.name);
+                
+              return {
+                id: file.id,
+                url: publicUrlData.publicUrl,
+                fileName: file.name,
+                displayName: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, ' '),
+                description: null,
+                dateTaken: null,
+                location: null
+              };
             }));
             
             setMemories(memoryImages);
@@ -141,6 +149,7 @@ const MemorySlideshow = () => {
         </div>
       ) : error ? (
         <div className="neu-element p-8 text-center text-destructive">
+          <AlertTriangle className="mx-auto mb-2" />
           {error}
         </div>
       ) : (
@@ -165,6 +174,11 @@ const MemorySlideshow = () => {
                         style={{ 
                           animationDelay: `${index * 0.2}s`,
                           animationDuration: '0.8s'
+                        }}
+                        onError={(e) => {
+                          console.error("Image failed to load:", memory.url);
+                          // Set a fallback image or show error state
+                          (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/gray/white?text=Image+Not+Found';
                         }}
                       />
                     </AspectRatio>

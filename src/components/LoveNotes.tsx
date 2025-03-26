@@ -1,8 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { Heart, Calendar } from 'lucide-react';
+import { Heart, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Note {
   id: string;
@@ -14,6 +25,7 @@ const LoveNotes: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   
   // Load notes from Supabase on component mount
   useEffect(() => {
@@ -95,6 +107,7 @@ const LoveNotes: React.FC = () => {
       
       // Remove the note from local state
       setNotes(notes.filter(note => note.id !== id));
+      setNoteToDelete(null);
       toast.success('Love note deleted');
     } catch (error) {
       console.error('Error deleting note:', error);
@@ -148,15 +161,33 @@ const LoveNotes: React.FC = () => {
         ) : (
           notes.map((note) => (
             <div key={note.id} className="neu-element p-6 animate-fade-in relative group">
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => handleDeleteNote(note.id)}
-                  className="text-muted-foreground hover:text-destructive"
-                  aria-label="Delete note"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                </button>
-              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button 
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    aria-label="Delete note"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete love note</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this love note? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               
               <p className="mb-4 leading-relaxed">{note.content}</p>
               

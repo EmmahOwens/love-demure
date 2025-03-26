@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -16,12 +16,14 @@ const MemoryTimeline: React.FC = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Load memories from Supabase
   useEffect(() => {
     const fetchMemories = async () => {
       try {
         setIsLoading(true);
+        setError(null);
         const { data, error } = await supabase
           .from('memory_timeline')
           .select('*')
@@ -44,6 +46,7 @@ const MemoryTimeline: React.FC = () => {
         setMemories(formattedMemories);
       } catch (error) {
         console.error('Error fetching memories:', error);
+        setError('Failed to load memories');
         toast.error('Failed to load memories');
       } finally {
         setIsLoading(false);
@@ -59,6 +62,27 @@ const MemoryTimeline: React.FC = () => {
   
   const handleEditMemory = (memory: Memory) => {
     setEditingMemory(memory);
+  };
+  
+  const handleDeleteMemory = async (id: string) => {
+    try {
+      // Delete the memory from Supabase
+      const { error } = await supabase
+        .from('memory_timeline')
+        .delete()
+        .eq('id', id);
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Remove the memory from local state
+      setMemories(memories.filter(memory => memory.id !== id));
+      toast.success('Memory deleted successfully');
+    } catch (error) {
+      console.error('Error deleting memory:', error);
+      toast.error('Failed to delete memory');
+    }
   };
   
   const handleSaveMemory = async (id: string, data: MemoryFormValues) => {
@@ -95,6 +119,7 @@ const MemoryTimeline: React.FC = () => {
         )
       );
       
+      setEditingMemory(null);
       toast.success("Memory updated successfully!");
     } catch (error) {
       console.error('Error updating memory:', error);
@@ -169,6 +194,11 @@ const MemoryTimeline: React.FC = () => {
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-r-transparent"></div>
             <p className="mt-2 text-muted-foreground">Loading memories...</p>
           </div>
+        ) : error ? (
+          <div className="text-center py-16 text-destructive flex flex-col items-center">
+            <AlertTriangle size={32} className="mb-2" />
+            <p>{error}</p>
+          </div>
         ) : (
           <>
             {/* Memories */}
@@ -178,6 +208,7 @@ const MemoryTimeline: React.FC = () => {
                 memory={memory} 
                 index={index} 
                 onEdit={handleEditMemory}
+                onDelete={handleDeleteMemory}
               />
             ))}
             
