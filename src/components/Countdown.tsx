@@ -22,16 +22,16 @@ const Countdown: React.FC = () => {
     <div className="w-full max-w-2xl mx-auto py-6 px-4">
       <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-6">
         {isAnniversaryDay 
-          ? "Happy Anniversary Day!" 
+          ? "Our Hearts Celebrate Today!" 
           : isPast 
-            ? "Time since our last anniversary" 
-            : "Countdown to our anniversary"}
+            ? "Cherishing moments since our last heart dance" 
+            : "Counting heartbeats until we celebrate our love"}
       </h2>
       
       <p className="text-center text-muted-foreground mb-8">
         {isAnniversaryDay
-          ? "Today is our special day! ❤️"
-          : `${isPast ? "Our last" : "Our next"} anniversary is on ${formatDateToString(nextAnniversary)}`
+          ? "Today our souls dance in celebration of our endless love ❤️"
+          : `${isPast ? "Our love bloomed" : "Our hearts will rejoice"} on ${formatDateToString(nextAnniversary)}`
         }
       </p>
       
@@ -45,7 +45,7 @@ const Countdown: React.FC = () => {
       {isAnniversaryDay && (
         <div className="neu-element p-6 text-center animate-scale-up">
           <p className="text-xl font-medium text-primary">
-            Wishing us a day filled with love, joy, and beautiful memories!
+            May our love story continue to unfold with endless chapters of joy, passion, and beautiful memories!
           </p>
         </div>
       )}

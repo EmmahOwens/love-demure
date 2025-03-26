@@ -57,8 +57,8 @@ const AnniversaryAnimation: React.FC<AnniversaryAnimationProps> = ({ isAnniversa
       {hearts}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="neu-element bg-background/90 backdrop-blur-sm p-8 max-w-md text-center animate-scale-up">
-          <h2 className="text-4xl font-bold text-primary mb-4">Happy Anniversary!</h2>
-          <p className="text-xl mb-6">Celebrating another beautiful year together!</p>
+          <h2 className="text-4xl font-bold text-primary mb-4">Our Love Blooms Today!</h2>
+          <p className="text-xl mb-6">Another celestial dance around the sun, another year of our souls intertwined in love!</p>
           <Heart size={60} className="mx-auto text-primary animate-heart-beat" fill="currentColor" />
         </div>
       </div>

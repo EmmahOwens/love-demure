@@ -44,12 +44,12 @@ const LoveNotes: React.FC = () => {
   
   return (
     <div className="w-full max-w-2xl mx-auto py-10 px-4">
-      <h2 className="text-3xl font-semibold text-center mb-8">Love Notes</h2>
+      <h2 className="text-3xl font-semibold text-center mb-8">Whispers of the Heart</h2>
       
       <div className="neu-element p-6 mb-8">
         <textarea
           className="w-full p-4 rounded-lg bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary h-32"
-          placeholder="Write a love note..."
+          placeholder="Write a love letter to your soulmate..."
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
         />
@@ -60,15 +60,15 @@ const LoveNotes: React.FC = () => {
             className="neu-element px-6 py-2 text-primary font-medium flex items-center hover:scale-105 active:scale-95"
           >
             <Heart size={16} className="mr-2" />
-            Save Note
+            Send Love Note
           </button>
         </div>
       </div>
       
       <div className="space-y-6">
         {notes.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">
-            No notes yet. Write your first love note above!
+          <p className="text-center text-muted-foreground py-8 italic">
+            Your love story awaits its first written whisper. Leave a note that speaks to your heart...
           </p>
         ) : (
           notes.map((note) => (

@@ -16,12 +16,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="flex items-center justify-center mb-2">
           <Heart size={24} className="text-primary mr-2 animate-heart-beat" fill="currentColor" />
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight">
-            Our Love Story
+            Our Eternal Love Story
           </h1>
           <Heart size={24} className="text-primary ml-2 animate-heart-beat" fill="currentColor" />
         </div>
-        <p className="text-muted-foreground text-lg mt-2">
-          Celebrating our journey together
+        <p className="text-muted-foreground text-lg mt-2 italic">
+          Every moment with you is a verse in our beautiful love poem
         </p>
       </header>
       
@@ -30,7 +30,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </main>
       
       <footer className="mt-20 py-6 text-center text-sm text-muted-foreground">
-        <p>Made with love for our journey that began on May 20th</p>
+        <p>Crafted with endless love for our journey that bloomed on May 20th</p>
       </footer>
     </div>
   );
