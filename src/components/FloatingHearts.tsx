@@ -71,18 +71,20 @@ const FloatingHearts: React.FC = () => {
           }}
         />
       ))}
-      <style jsx global>{`
-        @keyframes floating {
-          0% {
-            transform: translate(0, 0) rotate(0deg);
-            opacity: var(--opacity);
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes floating {
+            0% {
+              transform: translate(0, 0) rotate(0deg);
+              opacity: var(--opacity);
+            }
+            100% {
+              transform: translate(${Math.random() > 0.5 ? '-' : ''}${Math.floor(Math.random() * 60) + 20}px, -${Math.floor(Math.random() * 100) + 50}px) rotate(${Math.random() > 0.5 ? '-' : ''}${Math.floor(Math.random() * 30)}deg);
+              opacity: 0;
+            }
           }
-          100% {
-            transform: translate(${Math.random() > 0.5 ? '-' : ''}${Math.floor(Math.random() * 60) + 20}px, -${Math.floor(Math.random() * 100) + 50}px) rotate(${Math.random() > 0.5 ? '-' : ''}${Math.floor(Math.random() * 30)}deg);
-            opacity: 0;
-          }
-        }
-      `}</style>
+        `
+      }} />
     </div>
   );
 };
