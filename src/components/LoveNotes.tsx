@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Heart, Calendar } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface Note {
   id: string;
@@ -11,35 +13,93 @@ interface Note {
 const LoveNotes: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Load saved notes from localStorage on component mount
+  // Load notes from Supabase on component mount
   useEffect(() => {
-    const savedNotes = localStorage.getItem('loveNotes');
-    if (savedNotes) {
-      setNotes(JSON.parse(savedNotes));
-    }
+    const fetchNotes = async () => {
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from('love_notes')
+          .select('*')
+          .order('created_at', { ascending: false });
+          
+        if (error) {
+          throw error;
+        }
+        
+        // Transform the data to match our Note interface
+        const formattedNotes = data.map(note => ({
+          id: note.id,
+          content: note.content,
+          createdAt: note.created_at
+        }));
+        
+        setNotes(formattedNotes);
+      } catch (error) {
+        console.error('Error fetching notes:', error);
+        toast.error('Failed to load love notes');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchNotes();
   }, []);
   
-  // Save notes to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('loveNotes', JSON.stringify(notes));
-  }, [notes]);
-  
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (newNote.trim()) {
-      const note: Note = {
-        id: Date.now().toString(),
-        content: newNote,
-        createdAt: new Date().toISOString()
-      };
-      
-      setNotes([note, ...notes]);
-      setNewNote('');
+      try {
+        // Insert the new note into Supabase
+        const { data, error } = await supabase
+          .from('love_notes')
+          .insert({
+            content: newNote
+          })
+          .select()
+          .single();
+          
+        if (error) {
+          throw error;
+        }
+        
+        // Add the new note to the local state
+        const newNoteObj: Note = {
+          id: data.id,
+          content: data.content,
+          createdAt: data.created_at
+        };
+        
+        setNotes([newNoteObj, ...notes]);
+        setNewNote('');
+        toast.success('Love note saved');
+      } catch (error) {
+        console.error('Error adding note:', error);
+        toast.error('Failed to save love note');
+      }
     }
   };
   
-  const handleDeleteNote = (id: string) => {
-    setNotes(notes.filter(note => note.id !== id));
+  const handleDeleteNote = async (id: string) => {
+    try {
+      // Delete the note from Supabase
+      const { error } = await supabase
+        .from('love_notes')
+        .delete()
+        .eq('id', id);
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Remove the note from local state
+      setNotes(notes.filter(note => note.id !== id));
+      toast.success('Love note deleted');
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      toast.error('Failed to delete love note');
+    }
   };
   
   return (
@@ -71,7 +131,12 @@ const LoveNotes: React.FC = () => {
       </div>
       
       <div className="space-y-6">
-        {notes.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-r-transparent"></div>
+            <p className="mt-2 text-muted-foreground">Loading love notes...</p>
+          </div>
+        ) : notes.length === 0 ? (
           <div className="text-center text-muted-foreground py-12 italic relative">
             <div className="absolute opacity-10 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <Heart size={80} className="text-primary" fill="currentColor" />

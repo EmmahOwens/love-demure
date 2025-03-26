@@ -53,6 +53,24 @@ export type Database = {
           },
         ]
       }
+      love_notes: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       maintenance_requests: {
         Row: {
           created_at: string | null
@@ -131,6 +149,39 @@ export type Database = {
           id?: string
           location?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      memory_timeline: {
+        Row: {
+          created_at: string
+          date: string
+          description: string | null
+          id: string
+          image_url: string | null
+          raw_date: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          raw_date: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          raw_date?: string
+          title?: string
+          updated_at?: string
         }
         Relationships: []
       }
