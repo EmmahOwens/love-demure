@@ -38,6 +38,26 @@ const MemorySlideshow = () => {
       try {
         setLoading(true);
         
+        // First, check if the 'memories' bucket exists and create it if it doesn't
+        const { data: buckets } = await supabase
+          .storage
+          .listBuckets();
+          
+        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+        
+        if (!bucketExists) {
+          // Create the bucket if it doesn't exist
+          console.log("Creating 'memories' bucket as it doesn't exist");
+          const { error: bucketError } = await supabase
+            .storage
+            .createBucket('memories', { public: true });
+            
+          if (bucketError) {
+            console.error("Error creating memories bucket:", bucketError);
+          }
+        }
+        
+        // Fetch memory details from the table
         const { data: memoryDetails, error: detailsError } = await supabase
           .from('memory_details')
           .select('*')
@@ -47,7 +67,9 @@ const MemorySlideshow = () => {
           throw new Error('Error fetching memory details: ' + detailsError.message);
         }
         
+        // If no memory details in the database, try to list files directly from storage
         if (!memoryDetails || memoryDetails.length === 0) {
+          console.log("No memory details found in database, checking storage directly");
           const { data: storageFiles, error: storageError } = await supabase
             .storage
             .from('memories')
@@ -82,34 +104,37 @@ const MemorySlideshow = () => {
             setMemories(memoryImages);
           }
         } else {
+          console.log(`Found ${memoryDetails.length} memory details in database`);
           const memoryImages: MemoryImage[] = await Promise.all(
             memoryDetails.map(async detail => {
-              const { data: publicUrlData } = supabase
-                .storage
-                .from('memories')
-                .getPublicUrl(detail.file_name);
-                
-              // Pre-load images to check validity
+              // Double check that the file exists in storage
               try {
-                const imgCheck = new Image();
-                imgCheck.src = publicUrlData.publicUrl;
+                const { data: publicUrlData } = supabase
+                  .storage
+                  .from('memories')
+                  .getPublicUrl(detail.file_name);
+                  
+                // Log the URL to help with debugging
+                console.log(`Generating URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
+                  
+                return {
+                  id: detail.id,
+                  url: publicUrlData.publicUrl,
+                  fileName: detail.file_name,
+                  displayName: detail.display_name,
+                  description: detail.description,
+                  dateTaken: detail.date_taken,
+                  location: detail.location
+                };
               } catch (e) {
-                console.log("Image preload check failed:", detail.file_name);
+                console.error(`Error generating URL for ${detail.file_name}:`, e);
+                return null;
               }
-                
-              return {
-                id: detail.id,
-                url: publicUrlData.publicUrl,
-                fileName: detail.file_name,
-                displayName: detail.display_name,
-                description: detail.description,
-                dateTaken: detail.date_taken,
-                location: detail.location
-              };
             })
           );
           
-          setMemories(memoryImages);
+          // Filter out any null results from errors
+          setMemories(memoryImages.filter(Boolean) as MemoryImage[]);
         }
       } catch (err) {
         console.error('Error in memory fetch:', err);
@@ -135,6 +160,7 @@ const MemorySlideshow = () => {
   }, [memories.length, autoplayEnabled]);
 
   const handleImageError = (id: string) => {
+    console.log(`Image with ID ${id} failed to load`);
     setImageErrors(prev => ({
       ...prev,
       [id]: true

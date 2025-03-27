@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { Upload, X, Calendar, MapPin } from 'lucide-react';
@@ -27,6 +27,34 @@ const MemoryUploader = () => {
     location: '',
   });
   const { toast } = useToast();
+
+  // Check if the memories bucket exists and create it if needed
+  useEffect(() => {
+    const checkBucket = async () => {
+      try {
+        // Check if the bucket exists
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+        
+        if (!bucketExists) {
+          console.log("Creating 'memories' bucket as it doesn't exist");
+          const { error } = await supabase.storage.createBucket('memories', {
+            public: true // Make the bucket public
+          });
+          
+          if (error) {
+            console.error("Error creating memories bucket:", error);
+          } else {
+            console.log("Successfully created 'memories' bucket");
+          }
+        }
+      } catch (error) {
+        console.error("Error checking/creating bucket:", error);
+      }
+    };
+    
+    checkBucket();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -98,16 +126,33 @@ const MemoryUploader = () => {
       
       // Generate a unique filename to avoid conflicts
       const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const randomId = Math.random().toString(36).substring(2, 15);
+      const timestamp = Date.now();
+      const fileName = `${randomId}_${timestamp}.${fileExt}`;
+      
+      console.log(`Uploading file ${fileName} to 'memories' bucket`);
       
       // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('memories')
-        .upload(fileName, selectedFile);
+        .upload(fileName, selectedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
         
       if (uploadError) {
         throw uploadError;
       }
+      
+      console.log("File uploaded successfully:", uploadData);
+      
+      // Get the public URL of the uploaded file
+      const { data: publicUrlData } = supabase
+        .storage
+        .from('memories')
+        .getPublicUrl(fileName);
+      
+      console.log("Public URL of uploaded file:", publicUrlData.publicUrl);
       
       // Store metadata in the memory_details table
       const { error: metadataError } = await supabase

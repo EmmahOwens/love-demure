@@ -26,6 +26,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
   const isEven = index % 2 === 0;
   const [imageError, setImageError] = React.useState(false);
   
+  // If there's an image, try to preload it to detect errors early
+  React.useEffect(() => {
+    if (memory.imageUrl) {
+      const img = new Image();
+      img.src = memory.imageUrl;
+      img.onerror = () => {
+        console.log(`Pre-loading image failed for memory "${memory.title}": ${memory.imageUrl}`);
+        setImageError(true);
+      };
+    }
+  }, [memory.imageUrl, memory.title]);
+  
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
       <div 
@@ -81,7 +93,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
             src={memory.imageUrl} 
             alt={memory.title} 
             className="w-full h-40 object-cover rounded-lg mt-4 transition-transform duration-500 hover:scale-105"
-            onError={(e) => {
+            onError={() => {
               console.error("Memory image failed to load:", memory.imageUrl);
               setImageError(true);
             }}
