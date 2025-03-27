@@ -33,26 +33,60 @@ const MemorySlideshow = () => {
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
+  // Create the memories bucket if it doesn't exist
+  useEffect(() => {
+    const ensureBucketExists = async () => {
+      try {
+        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+        
+        if (bucketsError) {
+          console.error("Error listing buckets:", bucketsError);
+          return;
+        }
+        
+        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+        
+        if (!bucketExists) {
+          console.log("Creating 'memories' bucket as it doesn't exist");
+          const { error } = await supabase.storage.createBucket('memories', {
+            public: true
+          });
+          
+          if (error) {
+            console.error("Error creating memories bucket:", error);
+          } else {
+            console.log("Successfully created 'memories' bucket");
+          }
+        }
+      } catch (error) {
+        console.error("Error checking/creating bucket:", error);
+      }
+    };
+    
+    ensureBucketExists();
+  }, []);
+
+  // Fetch memories from both memory_timeline and memory_details
   useEffect(() => {
     const fetchMemories = async () => {
       try {
         setLoading(true);
+        setError(null);
         
-        // Check if the 'memories' bucket exists
-        const { data: buckets } = await supabase
-          .storage
-          .listBuckets();
+        // First, get all the records from memory_timeline
+        const { data: timelineData, error: timelineError } = await supabase
+          .from('memory_timeline')
+          .select('*')
+          .order('raw_date', { ascending: false });
           
-        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
-        
-        if (!bucketExists) {
-          console.log("'memories' bucket doesn't exist yet. Creating it...");
-          // We'll handle this in the UI flow now - the bucket will be created during first upload
-          toast.info("The memories bucket will be created when you upload your first memory");
+        if (timelineError) {
+          throw new Error('Error fetching memory timeline: ' + timelineError.message);
         }
         
-        // Fetch memory details from the table
-        const { data: memoryDetails, error: detailsError } = await supabase
+        console.log(`Found ${timelineData?.length || 0} records in memory_timeline`);
+        
+        // Then, get all records from memory_details
+        const { data: detailsData, error: detailsError } = await supabase
           .from('memory_details')
           .select('*')
           .order('created_at', { ascending: false });
@@ -61,64 +95,150 @@ const MemorySlideshow = () => {
           throw new Error('Error fetching memory details: ' + detailsError.message);
         }
         
-        console.log(`Found ${memoryDetails?.length || 0} memory details in database`);
+        console.log(`Found ${detailsData?.length || 0} records in memory_details`);
         
-        if (memoryDetails && memoryDetails.length > 0) {
-          // Process the memory details into memory images with URLs
-          const memoryImagesPromises = memoryDetails.map(async detail => {
-            try {
-              // Generate the public URL for the file
-              const { data: publicUrlData } = supabase
-                .storage
-                .from('memories')
-                .getPublicUrl(detail.file_name);
+        // Process both data sources
+        const memoryImagesPromises: Promise<MemoryImage | null>[] = [];
+        
+        // Process memory_timeline records
+        if (timelineData && timelineData.length > 0) {
+          timelineData.forEach(timeline => {
+            if (timeline.image_url) {
+              // If the timeline entry has an image_url, use it directly
+              memoryImagesPromises.push(processTimelineMemory(timeline));
+            } else {
+              // If it doesn't have an image_url, try to find a matching entry in memory_details
+              const matchingDetail = detailsData?.find(detail => {
+                if (!timeline.raw_date || !detail.date_taken) return false;
                 
-              console.log(`Generated URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
+                const timelineDate = new Date(timeline.raw_date).toISOString().split('T')[0];
+                const detailDate = new Date(detail.date_taken).toISOString().split('T')[0];
+                return timelineDate === detailDate;
+              });
               
-              // Check if the image loads correctly (preload)
-              const imageLoads = await checkImageLoads(publicUrlData.publicUrl);
-              
-              if (!imageLoads) {
-                console.warn(`Image failed preload check: ${detail.file_name}`);
-                // We'll still return the memory, but track the error state
-                setImageErrors(prev => ({
-                  ...prev,
-                  [detail.id]: true
-                }));
+              if (matchingDetail) {
+                // Use the file from memory_details
+                memoryImagesPromises.push(processDetailMemory(matchingDetail, timeline));
+              } else {
+                // Just use the timeline data without an image
+                memoryImagesPromises.push(processTimelineMemory(timeline));
               }
-                
-              return {
-                id: detail.id,
-                url: publicUrlData.publicUrl,
-                fileName: detail.file_name,
-                displayName: detail.display_name,
-                description: detail.description,
-                dateTaken: detail.date_taken,
-                location: detail.location
-              };
-            } catch (e) {
-              console.error(`Error generating URL for ${detail.file_name}:`, e);
-              return null;
             }
           });
-          
-          // Resolve all promises and filter out null results
-          const memoryImages = (await Promise.all(memoryImagesPromises)).filter(Boolean) as MemoryImage[];
-          setMemories(memoryImages);
-          
-          if (memoryImages.length === 0 && memoryDetails.length > 0) {
-            // We have details but no images loaded
-            setError("Could not load any images. The files might be missing from storage.");
-          }
+        }
+        
+        // Process any memory_details records that don't have a matching timeline entry
+        if (detailsData && detailsData.length > 0) {
+          detailsData.forEach(detail => {
+            // Check if this detail already has a matching timeline entry
+            const hasMatchingTimeline = timelineData?.some(timeline => {
+              if (!timeline.raw_date || !detail.date_taken) return false;
+              
+              const timelineDate = new Date(timeline.raw_date).toISOString().split('T')[0];
+              const detailDate = new Date(detail.date_taken).toISOString().split('T')[0];
+              return timelineDate === detailDate;
+            });
+            
+            if (!hasMatchingTimeline) {
+              memoryImagesPromises.push(processDetailMemory(detail));
+            }
+          });
+        }
+        
+        // Resolve all promises and filter out null results
+        const memoryImages = (await Promise.all(memoryImagesPromises))
+          .filter(Boolean) as MemoryImage[];
+        
+        if (memoryImages.length > 0) {
+          // Remove duplicates based on URL
+          const uniqueMemories = removeDuplicates(memoryImages, 'url');
+          setMemories(uniqueMemories);
+          console.log(`Processed ${uniqueMemories.length} unique memories for display`);
         } else {
-          // No memory details found
-          console.log("No memory details found in database");
+          // No memories found
+          console.log("No memory images found to display");
         }
       } catch (err) {
         console.error('Error in memory fetch:', err);
         setError(err instanceof Error ? err.message : 'Unknown error fetching images');
       } finally {
         setLoading(false);
+      }
+    };
+    
+    // Helper function to remove duplicates from array
+    const removeDuplicates = (arr: any[], key: string) => {
+      return [...new Map(arr.map(item => [item[key], item])).values()];
+    };
+
+    // Process a memory from the timeline table
+    const processTimelineMemory = async (timeline: any): Promise<MemoryImage | null> => {
+      try {
+        if (timeline.image_url) {
+          // Pre-check if the image loads
+          const imageLoads = await checkImageLoads(timeline.image_url);
+          
+          if (!imageLoads) {
+            console.warn(`Timeline image failed preload check: ${timeline.image_url}`);
+            setImageErrors(prev => ({
+              ...prev,
+              [timeline.id]: true
+            }));
+          }
+          
+          return {
+            id: timeline.id,
+            url: timeline.image_url,
+            fileName: '',
+            displayName: timeline.title,
+            description: timeline.description,
+            dateTaken: timeline.raw_date,
+            location: null
+          };
+        }
+        
+        // Return null if there's no image
+        return null;
+      } catch (e) {
+        console.error(`Error processing timeline memory ${timeline.id}:`, e);
+        return null;
+      }
+    };
+
+    // Process a memory from the details table
+    const processDetailMemory = async (detail: any, timeline?: any): Promise<MemoryImage | null> => {
+      try {
+        // Generate the public URL for the file
+        const { data: publicUrlData } = supabase
+          .storage
+          .from('memories')
+          .getPublicUrl(detail.file_name);
+        
+        console.log(`Generated URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
+        
+        // Pre-check if the image loads
+        const imageLoads = await checkImageLoads(publicUrlData.publicUrl);
+        
+        if (!imageLoads) {
+          console.warn(`Detail image failed preload check: ${detail.file_name}`);
+          setImageErrors(prev => ({
+            ...prev,
+            [detail.id]: true
+          }));
+        }
+        
+        return {
+          id: detail.id,
+          url: publicUrlData.publicUrl,
+          fileName: detail.file_name,
+          displayName: timeline?.title || detail.display_name,
+          description: timeline?.description || detail.description,
+          dateTaken: timeline?.raw_date || detail.date_taken,
+          location: detail.location
+        };
+      } catch (e) {
+        console.error(`Error processing detail memory ${detail.id}:`, e);
+        return null;
       }
     };
 
@@ -135,6 +255,7 @@ const MemorySlideshow = () => {
     });
   };
 
+  // Autoplay functionality for the slideshow
   useEffect(() => {
     if (!autoplayEnabled || memories.length <= 1) return;
     

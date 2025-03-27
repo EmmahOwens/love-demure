@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
+import { toast } from 'sonner';
 
 interface MemoryFormData {
   displayName: string;
@@ -44,6 +45,7 @@ const MemoryUploader = () => {
           
           if (error) {
             console.error("Error creating memories bucket:", error);
+            // Don't throw here, let the user try uploading still
           } else {
             console.log("Successfully created 'memories' bucket");
           }
@@ -137,7 +139,7 @@ const MemoryUploader = () => {
         .from('memories')
         .upload(fileName, selectedFile, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true // Set to true to replace existing file if it exists
         });
         
       if (uploadError) {
@@ -152,7 +154,8 @@ const MemoryUploader = () => {
         .from('memories')
         .getPublicUrl(fileName);
       
-      console.log("Public URL of uploaded file:", publicUrlData.publicUrl);
+      const imageUrl = publicUrlData.publicUrl;
+      console.log("Public URL of uploaded file:", imageUrl);
       
       // Store metadata in the memory_details table
       const { error: metadataError } = await supabase
@@ -167,6 +170,25 @@ const MemoryUploader = () => {
         
       if (metadataError) {
         throw metadataError;
+      }
+      
+      // Also store a reference in memory_timeline
+      const formattedDate = formData.dateTaken ? 
+        new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(formData.dateTaken) :
+        '';
+      
+      const { error: timelineError } = await supabase
+        .from('memory_timeline')
+        .insert({
+          title: formData.displayName,
+          description: formData.description || null,
+          date: formattedDate,
+          raw_date: formData.dateTaken.toISOString(),
+          image_url: imageUrl
+        });
+        
+      if (timelineError) {
+        throw timelineError;
       }
       
       toast({

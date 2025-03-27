@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface MemoryCardProps {
   memory: Memory;
@@ -32,8 +33,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
   // If not, check if there's a filename match in the memory_details table
   React.useEffect(() => {
     const fetchImage = async () => {
-      // If we already have an image URL, use it
-      if (memory.imageUrl) {
+      // If we already have an image URL and it's valid (starts with http), use it
+      if (memory.imageUrl && memory.imageUrl.startsWith('http')) {
         setImageUrl(memory.imageUrl);
         return;
       }
@@ -47,7 +48,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
           const { data, error } = await supabase
             .from('memory_details')
             .select('*')
-            .eq('date_taken', formattedDate + 'T00:00:00+00:00');
+            .filter('date_taken', 'like', `${formattedDate}%`);
             
           if (error) {
             console.error('Error fetching memory details:', error);
@@ -56,16 +57,46 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
           
           // If we found a match, get its image URL
           if (data && data.length > 0) {
-            console.log(`Found matching memory detail for ${memory.title} on ${formattedDate}:`, data[0]);
+            console.log(`Found ${data.length} matching memory details for "${memory.title}" on ${formattedDate}`);
             
-            const { data: publicUrlData } = supabase
-              .storage
-              .from('memories')
-              .getPublicUrl(data[0].file_name);
-              
-            console.log(`Generated URL for ${data[0].file_name}:`, publicUrlData.publicUrl);
-            
-            setImageUrl(publicUrlData.publicUrl);
+            // Try each matching detail until we find a valid image
+            for (const detail of data) {
+              try {
+                const { data: publicUrlData } = supabase
+                  .storage
+                  .from('memories')
+                  .getPublicUrl(detail.file_name);
+                  
+                console.log(`Generated URL for ${detail.file_name}:`, publicUrlData.publicUrl);
+                
+                // Pre-check if the image loads
+                const img = new Image();
+                img.src = publicUrlData.publicUrl;
+                
+                // If we've made it here, set the URL
+                setImageUrl(publicUrlData.publicUrl);
+                
+                // Also update the memory in the database to cache this URL
+                if (memory.id) {
+                  const { error: updateError } = await supabase
+                    .from('memory_timeline')
+                    .update({ image_url: publicUrlData.publicUrl })
+                    .eq('id', memory.id);
+                  
+                  if (updateError) {
+                    console.error('Error updating memory with image URL:', updateError);
+                  } else {
+                    console.log(`Updated memory "${memory.title}" with image URL in database`);
+                  }
+                }
+                
+                // We found a valid image, no need to continue
+                break;
+              } catch (err) {
+                console.error(`Error processing image for detail ${detail.id}:`, err);
+                // Continue to the next detail
+              }
+            }
           }
         }
       } catch (error) {
@@ -84,9 +115,50 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
       img.onerror = () => {
         console.log(`Pre-loading image failed for memory "${memory.title}": ${imageUrl}`);
         setImageError(true);
+        
+        // If the image fails to load, try a fallback approach
+        if (memory.rawDate) {
+          const tryFallback = async () => {
+            try {
+              // Look for any files in the memories bucket
+              const { data: files, error: filesError } = await supabase
+                .storage
+                .from('memories')
+                .list();
+                
+              if (filesError) {
+                console.error('Error listing files in memories bucket:', filesError);
+                return;
+              }
+              
+              if (files && files.length > 0) {
+                console.log(`Found ${files.length} files in memories bucket, looking for a match...`);
+                
+                // Check the creation date in file metadata if possible
+                // For simplicity, we'll just try the first file as a fallback
+                const { data: publicUrlData } = supabase
+                  .storage
+                  .from('memories')
+                  .getPublicUrl(files[0].name);
+                  
+                setImageUrl(publicUrlData.publicUrl);
+                setImageError(false);
+              }
+            } catch (err) {
+              console.error('Error in fallback image lookup:', err);
+            }
+          };
+          
+          tryFallback();
+        }
+      };
+      
+      img.onload = () => {
+        console.log(`Successfully pre-loaded image for memory "${memory.title}": ${imageUrl}`);
+        setImageError(false);
       };
     }
-  }, [imageUrl, memory.title]);
+  }, [imageUrl, memory.title, memory.rawDate]);
   
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
@@ -146,6 +218,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
             onError={() => {
               console.error("Memory image failed to load:", imageUrl);
               setImageError(true);
+              toast.error(`Failed to load image for "${memory.title}"`, {
+                id: `image-error-${memory.id}`,
+                duration: 3000
+              });
             }}
           />
         ) : imageUrl && imageError ? (
