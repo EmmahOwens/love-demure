@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/carousel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, MapPin, Pause, Play, AlertTriangle } from 'lucide-react';
+import { Calendar, MapPin, Pause, Play, AlertTriangle, ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -38,7 +38,7 @@ const MemorySlideshow = () => {
       try {
         setLoading(true);
         
-        // First, check if the 'memories' bucket exists and create it if it doesn't
+        // Check if the 'memories' bucket exists
         const { data: buckets } = await supabase
           .storage
           .listBuckets();
@@ -46,15 +46,9 @@ const MemorySlideshow = () => {
         const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
         
         if (!bucketExists) {
-          // Create the bucket if it doesn't exist
-          console.log("Creating 'memories' bucket as it doesn't exist");
-          const { error: bucketError } = await supabase
-            .storage
-            .createBucket('memories', { public: true });
-            
-          if (bucketError) {
-            console.error("Error creating memories bucket:", bucketError);
-          }
+          console.log("'memories' bucket doesn't exist yet. Creating it...");
+          // We'll handle this in the UI flow now - the bucket will be created during first upload
+          toast.info("The memories bucket will be created when you upload your first memory");
         }
         
         // Fetch memory details from the table
@@ -67,74 +61,58 @@ const MemorySlideshow = () => {
           throw new Error('Error fetching memory details: ' + detailsError.message);
         }
         
-        // If no memory details in the database, try to list files directly from storage
-        if (!memoryDetails || memoryDetails.length === 0) {
-          console.log("No memory details found in database, checking storage directly");
-          const { data: storageFiles, error: storageError } = await supabase
-            .storage
-            .from('memories')
-            .list();
-            
-          if (storageError) {
-            throw new Error('Error fetching images: ' + storageError.message);
-          }
-          
-          if (storageFiles && storageFiles.length > 0) {
-            const imageFiles = storageFiles.filter(file => 
-              file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
-            );
-            
-            const memoryImages: MemoryImage[] = await Promise.all(imageFiles.map(async file => {
+        console.log(`Found ${memoryDetails?.length || 0} memory details in database`);
+        
+        if (memoryDetails && memoryDetails.length > 0) {
+          // Process the memory details into memory images with URLs
+          const memoryImagesPromises = memoryDetails.map(async detail => {
+            try {
+              // Generate the public URL for the file
               const { data: publicUrlData } = supabase
                 .storage
                 .from('memories')
-                .getPublicUrl(file.name);
+                .getPublicUrl(detail.file_name);
+                
+              console.log(`Generated URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
+              
+              // Check if the image loads correctly (preload)
+              const imageLoads = await checkImageLoads(publicUrlData.publicUrl);
+              
+              if (!imageLoads) {
+                console.warn(`Image failed preload check: ${detail.file_name}`);
+                // We'll still return the memory, but track the error state
+                setImageErrors(prev => ({
+                  ...prev,
+                  [detail.id]: true
+                }));
+              }
                 
               return {
-                id: file.id,
+                id: detail.id,
                 url: publicUrlData.publicUrl,
-                fileName: file.name,
-                displayName: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, ' '),
-                description: null,
-                dateTaken: null,
-                location: null
+                fileName: detail.file_name,
+                displayName: detail.display_name,
+                description: detail.description,
+                dateTaken: detail.date_taken,
+                location: detail.location
               };
-            }));
-            
-            setMemories(memoryImages);
+            } catch (e) {
+              console.error(`Error generating URL for ${detail.file_name}:`, e);
+              return null;
+            }
+          });
+          
+          // Resolve all promises and filter out null results
+          const memoryImages = (await Promise.all(memoryImagesPromises)).filter(Boolean) as MemoryImage[];
+          setMemories(memoryImages);
+          
+          if (memoryImages.length === 0 && memoryDetails.length > 0) {
+            // We have details but no images loaded
+            setError("Could not load any images. The files might be missing from storage.");
           }
         } else {
-          console.log(`Found ${memoryDetails.length} memory details in database`);
-          const memoryImages: MemoryImage[] = await Promise.all(
-            memoryDetails.map(async detail => {
-              // Double check that the file exists in storage
-              try {
-                const { data: publicUrlData } = supabase
-                  .storage
-                  .from('memories')
-                  .getPublicUrl(detail.file_name);
-                  
-                // Log the URL to help with debugging
-                console.log(`Generating URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
-                  
-                return {
-                  id: detail.id,
-                  url: publicUrlData.publicUrl,
-                  fileName: detail.file_name,
-                  displayName: detail.display_name,
-                  description: detail.description,
-                  dateTaken: detail.date_taken,
-                  location: detail.location
-                };
-              } catch (e) {
-                console.error(`Error generating URL for ${detail.file_name}:`, e);
-                return null;
-              }
-            })
-          );
-          
-          // Filter out any null results from errors
-          setMemories(memoryImages.filter(Boolean) as MemoryImage[]);
+          // No memory details found
+          console.log("No memory details found in database");
         }
       } catch (err) {
         console.error('Error in memory fetch:', err);
@@ -146,6 +124,16 @@ const MemorySlideshow = () => {
 
     fetchMemories();
   }, []);
+
+  // Helper function to check if an image loads
+  const checkImageLoads = (url: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+  };
 
   useEffect(() => {
     if (!autoplayEnabled || memories.length <= 1) return;
@@ -172,10 +160,13 @@ const MemorySlideshow = () => {
       <div className="w-full max-w-4xl mx-auto py-6 px-4">
         <h2 className="text-3xl font-semibold text-center mb-6">Memory Slideshow</h2>
         <div className="neu-element p-8 text-center">
-          <p className="mb-4">No memories uploaded yet.</p>
-          <p className="text-muted-foreground">
-            Upload your special moments using the form below to see them displayed here.
-          </p>
+          <div className="flex flex-col items-center justify-center gap-4">
+            <ImageIcon className="h-16 w-16 text-muted-foreground/50" />
+            <p className="mb-4">No memories uploaded yet.</p>
+            <p className="text-muted-foreground">
+              Upload your special moments using the form below to see them displayed here.
+            </p>
+          </div>
         </div>
       </div>
     );
