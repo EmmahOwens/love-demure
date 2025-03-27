@@ -24,6 +24,7 @@ interface MemoryCardProps {
 
 const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete }) => {
   const isEven = index % 2 === 0;
+  const [imageError, setImageError] = React.useState(false);
   
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
@@ -75,17 +76,21 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
         <h3 className="text-xl font-semibold mb-2">{memory.title}</h3>
         <p className="text-foreground/80">{memory.description}</p>
         
-        {memory.imageUrl && (
+        {memory.imageUrl && !imageError ? (
           <img 
             src={memory.imageUrl} 
             alt={memory.title} 
             className="w-full h-40 object-cover rounded-lg mt-4 transition-transform duration-500 hover:scale-105"
             onError={(e) => {
               console.error("Memory image failed to load:", memory.imageUrl);
-              (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/gray/white?text=Image+Not+Found';
+              setImageError(true);
             }}
           />
-        )}
+        ) : memory.imageUrl && imageError ? (
+          <div className="w-full h-40 bg-muted flex items-center justify-center rounded-lg mt-4">
+            <p className="text-muted-foreground text-sm">Image not available</p>
+          </div>
+        ) : null}
         
         <div className="flex justify-end mt-4">
           <Heart size={18} className="text-primary animate-heart-beat" fill="currentColor" />

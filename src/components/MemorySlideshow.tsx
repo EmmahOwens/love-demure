@@ -31,6 +31,7 @@ const MemorySlideshow = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchMemories = async () => {
@@ -88,6 +89,14 @@ const MemorySlideshow = () => {
                 .from('memories')
                 .getPublicUrl(detail.file_name);
                 
+              // Pre-load images to check validity
+              try {
+                const imgCheck = new Image();
+                imgCheck.src = publicUrlData.publicUrl;
+              } catch (e) {
+                console.log("Image preload check failed:", detail.file_name);
+              }
+                
               return {
                 id: detail.id,
                 url: publicUrlData.publicUrl,
@@ -124,6 +133,13 @@ const MemorySlideshow = () => {
     
     return () => clearInterval(interval);
   }, [memories.length, autoplayEnabled]);
+
+  const handleImageError = (id: string) => {
+    setImageErrors(prev => ({
+      ...prev,
+      [id]: true
+    }));
+  };
 
   if (memories.length === 0 && !loading) {
     return (
@@ -166,21 +182,29 @@ const MemorySlideshow = () => {
               {memories.map((memory, index) => (
                 <CarouselItem key={memory.id} className="relative">
                   <div className="p-1">
-                    <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-xl">
-                      <img
-                        src={memory.url}
-                        alt={memory.displayName}
-                        className="object-cover w-full h-full transition-transform duration-1000 hover:scale-105 animate-fade-in"
-                        style={{ 
-                          animationDelay: `${index * 0.2}s`,
-                          animationDuration: '0.8s'
-                        }}
-                        onError={(e) => {
-                          console.error("Image failed to load:", memory.url);
-                          // Set a fallback image or show error state
-                          (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/gray/white?text=Image+Not+Found';
-                        }}
-                      />
+                    <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-xl bg-muted">
+                      {!imageErrors[memory.id] ? (
+                        <img
+                          src={memory.url}
+                          alt={memory.displayName}
+                          className="object-cover w-full h-full transition-transform duration-1000 hover:scale-105 animate-fade-in"
+                          style={{ 
+                            animationDelay: `${index * 0.2}s`,
+                            animationDuration: '0.8s'
+                          }}
+                          onError={() => {
+                            console.error("Image failed to load:", memory.url);
+                            handleImageError(memory.id);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <AlertTriangle className="mx-auto mb-2 text-muted-foreground" size={32} />
+                            <p className="text-muted-foreground">Image not available</p>
+                          </div>
+                        </div>
+                      )}
                     </AspectRatio>
                     
                     <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white rounded-b-xl transform transition-transform duration-500 animate-fade-in"
