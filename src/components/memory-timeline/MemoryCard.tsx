@@ -28,59 +28,61 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
   const isEven = index % 2 === 0;
   const [imageError, setImageError] = React.useState(false);
   const [imageUrl, setImageUrl] = React.useState<string | null>(memory.imageUrl || null);
+  const [isImageLoaded, setIsImageLoaded] = React.useState(false);
   
-  // If there's an image URL in the database, use it directly
-  // If not, check if there's a filename match in the memory_details table
+  // Try to load image from memory record or find it in storage
   React.useEffect(() => {
     const fetchImage = async () => {
-      // If we already have an image URL and it's valid (starts with http), use it
-      if (memory.imageUrl && memory.imageUrl.startsWith('http')) {
-        setImageUrl(memory.imageUrl);
-        return;
-      }
-      
       try {
-        // Try to find a matching memory in memory_details by date
+        // If we already have a valid image URL in the memory record, use it
+        if (memory.imageUrl && !imageError) {
+          const preCheck = await checkImageUrl(memory.imageUrl);
+          if (preCheck) {
+            setImageUrl(memory.imageUrl);
+            return;
+          }
+        }
+        
+        // Try to find a matching file in storage based on date
         if (memory.rawDate) {
           const formattedDate = memory.rawDate.toISOString().split('T')[0];
           
-          // Query memory_details for entries with matching date
-          const { data, error } = await supabase
-            .from('memory_details')
-            .select('*')
-            .filter('date_taken', 'like', `${formattedDate}%`);
+          // First, check if there are any files in the memories bucket
+          const { data: files, error: filesError } = await supabase
+            .storage
+            .from('memories')
+            .list();
             
-          if (error) {
-            console.error('Error fetching memory details:', error);
+          if (filesError) {
+            console.warn('Error listing files in bucket:', filesError);
             return;
           }
           
-          // If we found a match, get its image URL
-          if (data && data.length > 0) {
-            console.log(`Found ${data.length} matching memory details for "${memory.title}" on ${formattedDate}`);
+          if (files && files.length > 0) {
+            console.log(`Found ${files.length} files in memories bucket`);
             
-            // Try each matching detail until we find a valid image
-            for (const detail of data) {
-              try {
-                const { data: publicUrlData } = supabase
-                  .storage
-                  .from('memories')
-                  .getPublicUrl(detail.file_name);
-                  
-                console.log(`Generated URL for ${detail.file_name}:`, publicUrlData.publicUrl);
+            // Try to find files that might match this memory's date
+            // This is a fallback approach as the exact file name might not be known
+            for (const file of files) {
+              // Get the public URL for the file
+              const { data: publicUrlData } = supabase
+                .storage
+                .from('memories')
+                .getPublicUrl(file.name);
+              
+              // Try to use this image
+              const imgUrl = publicUrlData.publicUrl;
+              const imgLoads = await checkImageUrl(imgUrl);
+              
+              if (imgLoads) {
+                console.log(`Found working image for memory "${memory.title}": ${file.name}`);
+                setImageUrl(imgUrl);
                 
-                // Pre-check if the image loads
-                const img = new Image();
-                img.src = publicUrlData.publicUrl;
-                
-                // If we've made it here, set the URL
-                setImageUrl(publicUrlData.publicUrl);
-                
-                // Also update the memory in the database to cache this URL
+                // Update the memory in the database to cache this URL for next time
                 if (memory.id) {
                   const { error: updateError } = await supabase
                     .from('memory_timeline')
-                    .update({ image_url: publicUrlData.publicUrl })
+                    .update({ image_url: imgUrl })
                     .eq('id', memory.id);
                   
                   if (updateError) {
@@ -90,11 +92,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
                   }
                 }
                 
-                // We found a valid image, no need to continue
-                break;
-              } catch (err) {
-                console.error(`Error processing image for detail ${detail.id}:`, err);
-                // Continue to the next detail
+                return;
               }
             }
           }
@@ -105,60 +103,33 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
     };
     
     fetchImage();
-  }, [memory]);
+  }, [memory, imageError]);
   
-  // If there's an image, try to preload it to detect errors early
-  React.useEffect(() => {
-    if (imageUrl) {
+  // Helper to check if an image URL is valid and loads
+  const checkImageUrl = async (url: string): Promise<boolean> => {
+    return new Promise((resolve) => {
       const img = new Image();
-      img.src = imageUrl;
-      img.onerror = () => {
-        console.log(`Pre-loading image failed for memory "${memory.title}": ${imageUrl}`);
-        setImageError(true);
-        
-        // If the image fails to load, try a fallback approach
-        if (memory.rawDate) {
-          const tryFallback = async () => {
-            try {
-              // Look for any files in the memories bucket
-              const { data: files, error: filesError } = await supabase
-                .storage
-                .from('memories')
-                .list();
-                
-              if (filesError) {
-                console.error('Error listing files in memories bucket:', filesError);
-                return;
-              }
-              
-              if (files && files.length > 0) {
-                console.log(`Found ${files.length} files in memories bucket, looking for a match...`);
-                
-                // Check the creation date in file metadata if possible
-                // For simplicity, we'll just try the first file as a fallback
-                const { data: publicUrlData } = supabase
-                  .storage
-                  .from('memories')
-                  .getPublicUrl(files[0].name);
-                  
-                setImageUrl(publicUrlData.publicUrl);
-                setImageError(false);
-              }
-            } catch (err) {
-              console.error('Error in fallback image lookup:', err);
-            }
-          };
-          
-          tryFallback();
-        }
-      };
-      
       img.onload = () => {
-        console.log(`Successfully pre-loaded image for memory "${memory.title}": ${imageUrl}`);
-        setImageError(false);
+        console.log(`Image pre-check successful: ${url}`);
+        resolve(true);
       };
-    }
-  }, [imageUrl, memory.title, memory.rawDate]);
+      img.onerror = () => {
+        console.warn(`Image pre-check failed: ${url}`);
+        resolve(false);
+      };
+      img.src = url;
+    });
+  };
+  
+  const handleImageLoad = () => {
+    setIsImageLoaded(true);
+    setImageError(false);
+  };
+  
+  const handleImageError = () => {
+    setImageError(true);
+    setIsImageLoaded(false);
+  };
   
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
@@ -210,23 +181,27 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
         <h3 className="text-xl font-semibold mb-2">{memory.title}</h3>
         <p className="text-foreground/80">{memory.description}</p>
         
-        {imageUrl && !imageError ? (
-          <img 
-            src={imageUrl} 
-            alt={memory.title} 
-            className="w-full h-40 object-cover rounded-lg mt-4 transition-transform duration-500 hover:scale-105"
-            onError={() => {
-              console.error("Memory image failed to load:", imageUrl);
-              setImageError(true);
-              toast.error(`Failed to load image for "${memory.title}"`, {
-                id: `image-error-${memory.id}`,
-                duration: 3000
-              });
-            }}
-          />
-        ) : imageUrl && imageError ? (
-          <div className="w-full h-40 bg-muted flex items-center justify-center rounded-lg mt-4">
-            <p className="text-muted-foreground text-sm">Image not available</p>
+        {imageUrl ? (
+          <div className="w-full h-40 bg-muted/50 rounded-lg mt-4 overflow-hidden relative">
+            {!isImageLoaded && !imageError && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+              </div>
+            )}
+            
+            <img 
+              src={imageUrl} 
+              alt={memory.title} 
+              className={`w-full h-full object-cover rounded-lg transition-all duration-500 ${isImageLoaded ? 'opacity-100' : 'opacity-0'} ${isImageLoaded ? 'hover:scale-105' : ''}`}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+            
+            {imageError && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="text-muted-foreground text-sm">Image not available</p>
+              </div>
+            )}
           </div>
         ) : null}
         

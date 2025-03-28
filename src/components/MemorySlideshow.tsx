@@ -66,6 +66,7 @@ const MemorySlideshow = () => {
   const [showControls, setShowControls] = useState(true);
   const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null);
   const [api, setApi] = useState<any | null>(null);
+  const [imagesLoaded, setImagesLoaded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const ensureBucketExists = async () => {
@@ -89,6 +90,21 @@ const MemorySlideshow = () => {
             console.error("Error creating memories bucket:", error);
           } else {
             console.log("Successfully created 'memories' bucket");
+            
+            // Also create the public policy for the bucket
+            const { error: policyError } = await supabase.rpc('create_bucket_policy', {
+              bucket_name: 'memories',
+              policy_name: 'Public Access',
+              definition: "bucket_id = 'memories'"
+            }).catch(e => {
+              // If the RPC doesn't exist, we'll ignore it and continue
+              console.warn("Unable to create bucket policy via RPC, will need manual configuration:", e);
+              return { error: e };
+            });
+            
+            if (policyError) {
+              console.warn("Unable to set policy automatically. This may require manual configuration.");
+            }
           }
         }
       } catch (error) {
@@ -104,77 +120,97 @@ const MemorySlideshow = () => {
       setLoading(true);
       setError(null);
       
-      const { data: timelineData, error: timelineError } = await supabase
-        .from('memory_timeline')
-        .select('*')
-        .order('raw_date', { ascending: false });
+      // Direct approach: load all files from storage
+      const { data: files, error: filesError } = await supabase
+        .storage
+        .from('memories')
+        .list();
         
-      if (timelineError) {
-        throw new Error('Error fetching memory timeline: ' + timelineError.message);
-      }
-      
-      console.log(`Found ${timelineData?.length || 0} records in memory_timeline`);
-      
-      const { data: detailsData, error: detailsError } = await supabase
-        .from('memory_details')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (filesError) {
+        console.error('Error listing files:', filesError);
+      } else if (files && files.length > 0) {
+        console.log(`Found ${files.length} files in storage`);
         
-      if (detailsError) {
-        throw new Error('Error fetching memory details: ' + detailsError.message);
-      }
-      
-      console.log(`Found ${detailsData?.length || 0} records in memory_details`);
-      
-      const memoryImagesPromises: Promise<MemoryImage | null>[] = [];
-      
-      if (timelineData && timelineData.length > 0) {
-        timelineData.forEach(timeline => {
-          if (timeline.image_url) {
-            memoryImagesPromises.push(processTimelineMemory(timeline));
-          } else {
-            const matchingDetail = detailsData?.find(detail => {
-              if (!timeline.raw_date || !detail.date_taken) return false;
+        // Create memory entries from storage files
+        const storageMemories: MemoryImage[] = [];
+        
+        for (const file of files) {
+          try {
+            // Get public URL for file
+            const { data: publicUrlData } = supabase
+              .storage
+              .from('memories')
+              .getPublicUrl(file.name);
               
-              const timelineDate = new Date(timeline.raw_date).toISOString().split('T')[0];
-              const detailDate = new Date(detail.date_taken).toISOString().split('T')[0];
-              return timelineDate === detailDate;
+            // Try to find metadata in memory_details
+            const { data: detailsData } = await supabase
+              .from('memory_details')
+              .select('*')
+              .eq('file_name', file.name)
+              .maybeSingle();
+              
+            // Create memory entry
+            storageMemories.push({
+              id: detailsData?.id || file.id || Math.random().toString(),
+              url: publicUrlData.publicUrl,
+              fileName: file.name,
+              displayName: detailsData?.display_name || file.name.split('_')[0],
+              description: detailsData?.description || null,
+              dateTaken: detailsData?.date_taken || null,
+              location: detailsData?.location || null
             });
+          } catch (err) {
+            console.error(`Error processing file ${file.name}:`, err);
+          }
+        }
+        
+        // Now get entries from memory_timeline too
+        const { data: timelineData, error: timelineError } = await supabase
+          .from('memory_timeline')
+          .select('*')
+          .order('raw_date', { ascending: false });
+          
+        if (timelineError) {
+          console.error('Error fetching memory timeline:', timelineError);
+        } else if (timelineData && timelineData.length > 0) {
+          console.log(`Found ${timelineData.length} entries in memory_timeline`);
+          
+          // Process timeline entries
+          for (const timeline of timelineData) {
+            // Check if we already have this memory (by URL)
+            const existingIndex = storageMemories.findIndex(m => 
+              (timeline.image_url && m.url === timeline.image_url) || 
+              (timeline.title && m.displayName === timeline.title)
+            );
             
-            if (matchingDetail) {
-              memoryImagesPromises.push(processDetailMemory(matchingDetail, timeline));
-            } else {
-              memoryImagesPromises.push(processTimelineMemory(timeline));
+            if (existingIndex >= 0) {
+              // Update the existing entry with any additional info
+              storageMemories[existingIndex] = {
+                ...storageMemories[existingIndex],
+                id: timeline.id || storageMemories[existingIndex].id,
+                displayName: timeline.title || storageMemories[existingIndex].displayName,
+                description: timeline.description || storageMemories[existingIndex].description,
+                dateTaken: timeline.raw_date || storageMemories[existingIndex].dateTaken,
+              };
+            } else if (timeline.image_url) {
+              // It's a new entry with its own URL
+              storageMemories.push({
+                id: timeline.id,
+                url: timeline.image_url,
+                fileName: '',
+                displayName: timeline.title,
+                description: timeline.description || null,
+                dateTaken: timeline.raw_date,
+                location: null
+              });
             }
           }
-        });
-      }
-      
-      if (detailsData && detailsData.length > 0) {
-        detailsData.forEach(detail => {
-          const hasMatchingTimeline = timelineData?.some(timeline => {
-            if (!timeline.raw_date || !detail.date_taken) return false;
-            
-            const timelineDate = new Date(timeline.raw_date).toISOString().split('T')[0];
-            const detailDate = new Date(detail.date_taken).toISOString().split('T')[0];
-            return timelineDate === detailDate;
-          });
-          
-          if (!hasMatchingTimeline) {
-            memoryImagesPromises.push(processDetailMemory(detail));
-          }
-        });
-      }
-      
-      const memoryImages = (await Promise.all(memoryImagesPromises))
-        .filter(Boolean) as MemoryImage[];
-      
-      if (memoryImages.length > 0) {
-        const uniqueMemories = removeDuplicates(memoryImages, 'url');
+        }
+        
+        // Deduplicate and sort memories
+        const uniqueMemories = removeDuplicatesByKey(storageMemories, 'url');
         setMemories(uniqueMemories);
-        console.log(`Processed ${uniqueMemories.length} unique memories for display`);
-      } else {
-        console.log("No memory images found to display");
+        console.log(`Found ${uniqueMemories.length} unique memories for display`);
       }
     } catch (err) {
       console.error('Error in memory fetch:', err);
@@ -185,104 +221,33 @@ const MemorySlideshow = () => {
     }
   };
 
-  const removeDuplicates = (arr: any[], key: string) => {
-    return [...new Map(arr.map(item => [item[key], item])).values()];
-  };
-
-  const processTimelineMemory = async (timeline: any): Promise<MemoryImage | null> => {
-    try {
-      if (timeline.image_url) {
-        const imageLoads = await checkImageLoads(timeline.image_url);
-        
-        if (!imageLoads) {
-          console.warn(`Timeline image failed preload check: ${timeline.image_url}`);
-          setImageErrors(prev => ({
-            ...prev,
-            [timeline.id]: true
-          }));
-        }
-        
-        return {
-          id: timeline.id,
-          url: timeline.image_url,
-          fileName: '',
-          displayName: timeline.title,
-          description: timeline.description,
-          dateTaken: timeline.raw_date,
-          location: null
-        };
-      }
-      
-      return null;
-    } catch (e) {
-      console.error(`Error processing timeline memory ${timeline.id}:`, e);
-      return null;
-    }
-  };
-
-  const processDetailMemory = async (detail: any, timeline?: any): Promise<MemoryImage | null> => {
-    try {
-      const { data: publicUrlData } = supabase
-        .storage
-        .from('memories')
-        .getPublicUrl(detail.file_name);
-      
-      console.log(`Generated URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
-      
-      const imageLoads = await checkImageLoads(publicUrlData.publicUrl);
-      
-      if (!imageLoads) {
-        console.warn(`Detail image failed preload check: ${detail.file_name}`);
-        setImageErrors(prev => ({
-          ...prev,
-          [detail.id]: true
-        }));
-      }
-      
-      return {
-        id: detail.id,
-        url: publicUrlData.publicUrl,
-        fileName: detail.file_name,
-        displayName: timeline?.title || detail.display_name,
-        description: timeline?.description || detail.description,
-        dateTaken: timeline?.raw_date || detail.date_taken,
-        location: detail.location
-      };
-    } catch (e) {
-      console.error(`Error processing detail memory ${detail.id}:`, e);
-      return null;
-    }
+  // Better deduplication helper
+  const removeDuplicatesByKey = <T extends Record<string, any>>(arr: T[], key: keyof T): T[] => {
+    const seen = new Set<string>();
+    return arr.filter(item => {
+      const value = item[key]?.toString();
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
   };
 
   useEffect(() => {
     fetchMemories();
   }, []);
 
-  const checkImageLoads = (url: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = url;
-    });
-  };
-
+  // Handle autoplay with the Carousel API
   useEffect(() => {
-    if (!autoplayEnabled || memories.length <= 1 || isRefreshing) return;
+    if (!autoplayEnabled || memories.length <= 1 || isRefreshing || !api) return;
     
     const interval = setInterval(() => {
-      if (api) {
-        api.scrollNext();
-      } else {
-        setCurrentIndex(prevIndex => 
-          prevIndex === memories.length - 1 ? 0 : prevIndex + 1
-        );
-      }
+      api.scrollNext();
     }, 5000);
     
     return () => clearInterval(interval);
   }, [memories.length, autoplayEnabled, isRefreshing, api]);
 
+  // Handle fullscreen mouse movement
   useEffect(() => {
     if (!isFullscreen) return;
     
@@ -307,6 +272,7 @@ const MemorySlideshow = () => {
     };
   }, [isFullscreen, controlsTimeout]);
 
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isFullscreen) {
@@ -336,31 +302,31 @@ const MemorySlideshow = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
+  // Handle slide navigation
   const navigateSlide = useCallback((direction: 'prev' | 'next') => {
-    if (memories.length <= 1) return;
+    if (memories.length <= 1 || !api) return;
     
-    if (api) {
-      if (direction === 'prev') {
-        api.scrollPrev();
-      } else {
-        api.scrollNext();
-      }
+    if (direction === 'prev') {
+      api.scrollPrev();
     } else {
-      setCurrentIndex(prevIndex => {
-        if (direction === 'prev') {
-          return prevIndex === 0 ? memories.length - 1 : prevIndex - 1;
-        } else {
-          return prevIndex === memories.length - 1 ? 0 : prevIndex + 1;
-        }
-      });
+      api.scrollNext();
     }
   }, [memories.length, api]);
 
+  // Set up swipe handlers
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => navigateSlide('next'),
     onSwipedRight: () => navigateSlide('prev'),
     trackMouse: true
   });
+
+  // Handle image load/error
+  const handleImageLoad = (id: string) => {
+    setImagesLoaded(prev => ({
+      ...prev,
+      [id]: true
+    }));
+  };
 
   const handleImageError = (id: string) => {
     console.log(`Image with ID ${id} failed to load`);
@@ -551,9 +517,9 @@ const MemorySlideshow = () => {
               align: "center",
             }}
             setApi={setApi}
-            onSelect={(index) => {
-              if (typeof index === 'number') {
-                setCurrentIndex(index);
+            onSelect={(api) => {
+              if (api && typeof api.selectedScrollSnap === 'function') {
+                setCurrentIndex(api.selectedScrollSnap());
               }
             }}
           >
@@ -565,25 +531,30 @@ const MemorySlideshow = () => {
                   onClick={toggleFullscreen}
                 >
                   <div className="p-1">
-                    <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-xl bg-muted">
-                      {!imageErrors[memory.id] ? (
-                        <img
-                          src={memory.url}
-                          alt={memory.displayName}
-                          className={cn(
-                            "object-cover w-full h-full transition-transform duration-1000 hover:scale-105 animate-fade-in",
-                            isFullscreen && "object-contain"
-                          )}
-                          style={{ 
-                            animationDelay: `${index * 0.2}s`,
-                            animationDuration: '0.8s'
-                          }}
-                          onError={() => {
-                            console.error("Image failed to load:", memory.url);
-                            handleImageError(memory.id);
-                          }}
-                        />
-                      ) : (
+                    <AspectRatio ratio={16 / 9} className="overflow-hidden rounded-xl bg-muted/50">
+                      {!imagesLoaded[memory.id] && !imageErrors[memory.id] && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        </div>
+                      )}
+                      
+                      <img
+                        src={memory.url}
+                        alt={memory.displayName}
+                        className={cn(
+                          "object-cover w-full h-full transition-all duration-1000",
+                          imagesLoaded[memory.id] ? "opacity-100 hover:scale-105" : "opacity-0",
+                          isFullscreen && "object-contain"
+                        )}
+                        style={{ 
+                          animationDelay: `${index * 0.2}s`,
+                          animationDuration: '0.8s'
+                        }}
+                        onLoad={() => handleImageLoad(memory.id)}
+                        onError={() => handleImageError(memory.id)}
+                      />
+                      
+                      {imageErrors[memory.id] && (
                         <div className="w-full h-full flex items-center justify-center">
                           <div className="text-center">
                             <AlertTriangle className="mx-auto mb-2 text-muted-foreground" size={32} />
@@ -593,7 +564,7 @@ const MemorySlideshow = () => {
                       )}
                     </AspectRatio>
                     
-                    {showInfo && (
+                    {showInfo && imagesLoaded[memory.id] && !imageErrors[memory.id] && (
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white rounded-b-xl transform transition-transform duration-500 animate-fade-in"
                         style={{ animationDelay: `${index * 0.2 + 0.3}s` }}>
                         <h3 className="font-semibold text-lg">{memory.displayName}</h3>

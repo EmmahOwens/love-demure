@@ -11,15 +11,36 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
-// Create the memories bucket if it doesn't exist - this is an example and should be run once
-// in a server context or via migrations. The UI code will still work if the bucket exists.
-// You can run this manually via Supabase SQL editor:
-/*
-insert into storage.buckets (id, name, public)
-values ('memories', 'memories', true);
-
--- Set up public access policy
-create policy "Public Access" 
-on storage.objects for all 
-using (bucket_id = 'memories');
-*/
+// Check if the memories bucket exists, create it if it doesn't
+(async () => {
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+    
+    if (!bucketExists) {
+      console.log("Creating 'memories' bucket as it doesn't exist");
+      const { error } = await supabase.storage.createBucket('memories', {
+        public: true
+      });
+      
+      if (error) {
+        console.error("Error creating memories bucket:", error);
+      } else {
+        console.log("Successfully created 'memories' bucket");
+        
+        // Add public access policy to the bucket
+        const { error: policyError } = await supabase.rpc('create_bucket_policy', {
+          bucket_name: 'memories',
+          policy_name: 'Public Access',
+          definition: "bucket_id = 'memories'"
+        });
+        
+        if (policyError) {
+          console.error("Error setting public policy:", policyError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error checking/creating bucket:", error);
+  }
+})();
