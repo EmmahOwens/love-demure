@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { 
@@ -64,6 +65,7 @@ const MemorySlideshow = () => {
   const [isBookmarked, setIsBookmarked] = useState<Record<string, boolean>>({});
   const [showControls, setShowControls] = useState(true);
   const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [api, setApi] = useState<any | null>(null);
 
   useEffect(() => {
     const ensureBucketExists = async () => {
@@ -269,13 +271,17 @@ const MemorySlideshow = () => {
     if (!autoplayEnabled || memories.length <= 1 || isRefreshing) return;
     
     const interval = setInterval(() => {
-      setCurrentIndex(prevIndex => 
-        prevIndex === memories.length - 1 ? 0 : prevIndex + 1
-      );
+      if (api) {
+        api.scrollNext();
+      } else {
+        setCurrentIndex(prevIndex => 
+          prevIndex === memories.length - 1 ? 0 : prevIndex + 1
+        );
+      }
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [memories.length, autoplayEnabled, isRefreshing]);
+  }, [memories.length, autoplayEnabled, isRefreshing, api]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -333,19 +339,26 @@ const MemorySlideshow = () => {
   const navigateSlide = useCallback((direction: 'prev' | 'next') => {
     if (memories.length <= 1) return;
     
-    setCurrentIndex(prevIndex => {
+    if (api) {
       if (direction === 'prev') {
-        return prevIndex === 0 ? memories.length - 1 : prevIndex - 1;
+        api.scrollPrev();
       } else {
-        return prevIndex === memories.length - 1 ? 0 : prevIndex + 1;
+        api.scrollNext();
       }
-    });
-  }, [memories.length]);
+    } else {
+      setCurrentIndex(prevIndex => {
+        if (direction === 'prev') {
+          return prevIndex === 0 ? memories.length - 1 : prevIndex - 1;
+        } else {
+          return prevIndex === memories.length - 1 ? 0 : prevIndex + 1;
+        }
+      });
+    }
+  }, [memories.length, api]);
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => navigateSlide('next'),
     onSwipedRight: () => navigateSlide('prev'),
-    preventDefaultTouchmoveEvent: true,
     trackMouse: true
   });
 
@@ -537,6 +550,7 @@ const MemorySlideshow = () => {
               loop: true,
               align: "center",
             }}
+            setApi={setApi}
             onSelect={(index) => {
               if (typeof index === 'number') {
                 setCurrentIndex(index);
@@ -627,123 +641,123 @@ const MemorySlideshow = () => {
                 className="mt-4" 
               />
             )}
-          </Carousel>
-          
-          {!isFullscreen && memories.length > 1 && (
-            <div className="mt-4">
-              <CarouselThumbnails 
-                thumbnails={thumbnailData}
-                className="mt-2"
-                itemClassName="transition-all duration-300 hover:shadow-md"
-              />
-            </div>
-          )}
-          
-          <div className="mt-4 flex justify-between items-center">
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Heart size={14} className="text-primary animate-pulse" fill="currentColor" />
-              {memories.length > 0 && `${currentIndex + 1} of ${memories.length}`}
-            </div>
-            
-            {isFullscreen && (
-              <>
-                <div className={cn(
-                  "fixed inset-0 pointer-events-none z-10",
-                  !showControls && "opacity-0"
-                )} />
-                <div className={cn(
-                  "fixed top-4 right-4 flex items-center gap-2 transition-opacity duration-300 z-20",
-                  !showControls && "opacity-0"
-                )}>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowInfo(!showInfo)}
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
-                  >
-                    <Info size={16} />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleBookmark(memories[currentIndex].id)}
-                    className={cn(
-                      "bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all",
-                      isBookmarked[memories[currentIndex].id] && "text-primary bg-black/30"
-                    )}
-                  >
-                    <Bookmark size={16} fill={isBookmarked[memories[currentIndex].id] ? "currentColor" : "none"} />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleShare}
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
-                  >
-                    <Share2 size={16} />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleDownload}
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
-                  >
-                    <Download size={16} />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={toggleFullscreen}
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
-                  >
-                    <Minimize size={16} />
-                  </Button>
-                </div>
-                
-                <div className={cn(
-                  "fixed left-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
-                  !showControls && "opacity-0"
-                )}>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
-                    onClick={() => navigateSlide('prev')}
-                  >
-                    <ChevronLeft size={24} />
-                  </Button>
-                </div>
-                
-                <div className={cn(
-                  "fixed right-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
-                  !showControls && "opacity-0"
-                )}>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
-                    onClick={() => navigateSlide('next')}
-                  >
-                    <ChevronRight size={24} />
-                  </Button>
-                </div>
-              </>
-            )}
-            
-            {!isFullscreen && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleFullscreen}
-                  className="flex items-center gap-1"
-                >
-                  <Maximize size={14} className="mr-1" />
-                  Fullscreen
-                </Button>
+
+            {!isFullscreen && memories.length > 1 && (
+              <div className="mt-4">
+                <CarouselThumbnails 
+                  thumbnails={thumbnailData}
+                  className="mt-2"
+                  itemClassName="transition-all duration-300 hover:shadow-md"
+                />
               </div>
             )}
-          </div>
+          
+            <div className="mt-4 flex justify-between items-center">
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <Heart size={14} className="text-primary animate-pulse" fill="currentColor" />
+                {memories.length > 0 && `${currentIndex + 1} of ${memories.length}`}
+              </div>
+              
+              {isFullscreen && (
+                <>
+                  <div className={cn(
+                    "fixed inset-0 pointer-events-none z-10",
+                    !showControls && "opacity-0"
+                  )} />
+                  <div className={cn(
+                    "fixed top-4 right-4 flex items-center gap-2 transition-opacity duration-300 z-20",
+                    !showControls && "opacity-0"
+                  )}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowInfo(!showInfo)}
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                    >
+                      <Info size={16} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleBookmark(memories[currentIndex].id)}
+                      className={cn(
+                        "bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all",
+                        isBookmarked[memories[currentIndex].id] && "text-primary bg-black/30"
+                      )}
+                    >
+                      <Bookmark size={16} fill={isBookmarked[memories[currentIndex].id] ? "currentColor" : "none"} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleShare}
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                    >
+                      <Share2 size={16} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleDownload}
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                    >
+                      <Download size={16} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={toggleFullscreen}
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                    >
+                      <Minimize size={16} />
+                    </Button>
+                  </div>
+                  
+                  <div className={cn(
+                    "fixed left-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
+                    !showControls && "opacity-0"
+                  )}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
+                      onClick={() => navigateSlide('prev')}
+                    >
+                      <ChevronLeft size={24} />
+                    </Button>
+                  </div>
+                  
+                  <div className={cn(
+                    "fixed right-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
+                    !showControls && "opacity-0"
+                  )}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
+                      onClick={() => navigateSlide('next')}
+                    >
+                      <ChevronRight size={24} />
+                    </Button>
+                  </div>
+                </>
+              )}
+              
+              {!isFullscreen && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleFullscreen}
+                    className="flex items-center gap-1"
+                  >
+                    <Maximize size={14} className="mr-1" />
+                    Fullscreen
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Carousel>
         </div>
       )}
     </div>
