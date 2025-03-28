@@ -549,12 +549,7 @@ const MemorySlideshow = () => {
               align: "center",
             }}
             setApi={setApi}
-            onSelect={(api) => {
-              if (api) {
-                const index = api.selectedScrollSnap();
-                setCurrentIndex(index);
-              }
-            }}
+            onSelect={handleCarouselSelect}
           >
             <CarouselContent>
               {memories.map((memory, index) => (
