@@ -11,48 +11,45 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
-// Check if the memories bucket exists, create it if it doesn't
-(async () => {
+// Ensure the memories bucket exists and is properly configured
+export const ensureMemoriesBucket = async () => {
   try {
+    // Check if the memories bucket exists
     const { data: buckets } = await supabase.storage.listBuckets();
     const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
     
     if (!bucketExists) {
-      console.log("Creating 'memories' bucket as it doesn't exist");
+      console.log("Creating 'memories' bucket...");
       const { error } = await supabase.storage.createBucket('memories', {
         public: true
       });
       
       if (error) {
         console.error("Error creating memories bucket:", error);
-      } else {
-        console.log("Successfully created 'memories' bucket");
-        
-        // Set bucket policy directly
-        try {
-          // Make the bucket public by using the storage.updateBucket API
-          const { error: policyError } = await supabase.storage.updateBucket('memories', {
-            public: true,
-            fileSizeLimit: 5242880 // 5MB limit
-          });
-          
-          if (policyError) {
-            console.error("Error setting public policy:", policyError);
-          }
-        } catch (policyErr) {
-          console.error("Error setting bucket policy:", policyErr);
-        }
+        return false;
       }
+      
+      console.log("Successfully created 'memories' bucket");
+    }
+    
+    // Always update the bucket to ensure it's public
+    const { error: updateError } = await supabase.storage.updateBucket('memories', {
+      public: true,
+      fileSizeLimit: 10485760 // 10MB limit
+    });
+    
+    if (updateError) {
+      console.error("Error updating bucket settings:", updateError);
+      return false;
     } else {
-      // If bucket exists, make sure it's public
-      const { error: updateError } = await supabase.storage.updateBucket('memories', {
-        public: true
-      });
-      if (updateError) {
-        console.error("Error updating existing bucket to public:", updateError);
-      }
+      console.log("Memories bucket is confirmed public with 10MB limit");
+      return true;
     }
   } catch (error) {
-    console.error("Error checking/creating bucket:", error);
+    console.error("Error managing memories bucket:", error);
+    return false;
   }
-})();
+};
+
+// Initialize the bucket when the client is loaded
+ensureMemoriesBucket();

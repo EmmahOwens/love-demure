@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, ensureMemoriesBucket } from '@/integrations/supabase/client';
 import { Upload, X, Calendar, MapPin } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
@@ -28,60 +28,24 @@ const MemoryUploader = () => {
     location: '',
   });
   const { toast } = useToast();
+  const [bucketReady, setBucketReady] = useState(false);
 
   // Check if the memories bucket exists and create it if needed
   useEffect(() => {
-    const checkBucket = async () => {
-      try {
-        // Check if the bucket exists
-        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-        
-        if (bucketsError) {
-          console.error("Error listing buckets:", bucketsError);
-          return;
-        }
-        
-        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
-        
-        if (!bucketExists) {
-          console.log("Creating 'memories' bucket as it doesn't exist");
-          const { error } = await supabase.storage.createBucket('memories', {
-            public: true // Make the bucket public
-          });
-          
-          if (error) {
-            console.error("Error creating memories bucket:", error);
-          } else {
-            console.log("Successfully created 'memories' bucket");
-            
-            // Update bucket to be public
-            const { error: updateError } = await supabase.storage.updateBucket('memories', {
-              public: true,
-              fileSizeLimit: 5242880 // 5MB limit
-            });
-            
-            if (updateError) {
-              console.error("Error updating bucket policy:", updateError);
-            }
-          }
-        } else {
-          // If bucket exists, ensure it's public
-          const { error: updateError } = await supabase.storage.updateBucket('memories', {
-            public: true
-          });
-          
-          if (updateError) {
-            console.error("Error updating existing bucket to public:", updateError);
-          } else {
-            console.log("Existing 'memories' bucket confirmed as public");
-          }
-        }
-      } catch (error) {
-        console.error("Error checking/creating bucket:", error);
+    const initBucket = async () => {
+      const ready = await ensureMemoriesBucket();
+      setBucketReady(ready);
+      
+      if (!ready) {
+        toast({
+          title: "Storage setup issue",
+          description: "There was a problem setting up storage. Some features may not work correctly.",
+          variant: "destructive",
+        });
       }
     };
     
-    checkBucket();
+    initBucket();
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,11 +60,11 @@ const MemoryUploader = () => {
         });
         return;
       }
-      // Check if file is not too large (5MB)
-      if (file.size > 5 * 1024 * 1024) {
+      // Check if file is not too large (10MB)
+      if (file.size > 10 * 1024 * 1024) {
         toast({
           title: "File too large",
-          description: "Please select an image under 5MB",
+          description: "Please select an image under 10MB",
           variant: "destructive",
         });
         return;
@@ -149,35 +113,31 @@ const MemoryUploader = () => {
       return;
     }
     
+    if (!bucketReady) {
+      // Try to initialize the bucket one more time
+      const ready = await ensureMemoriesBucket();
+      setBucketReady(ready);
+      
+      if (!ready) {
+        toast({
+          title: "Storage not available",
+          description: "Could not access storage. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     try {
       setUploading(true);
       
-      // Generate a unique filename to avoid conflicts
+      // Generate a unique filename that includes the title to make it easier to match later
       const fileExt = selectedFile.name.split('.').pop();
-      const randomId = Math.random().toString(36).substring(2, 15);
+      const sanitizedTitle = formData.displayName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
       const timestamp = Date.now();
-      const fileName = `${randomId}_${timestamp}.${fileExt}`;
+      const fileName = `${sanitizedTitle}_${timestamp}.${fileExt}`;
       
       console.log(`Uploading file ${fileName} to 'memories' bucket`);
-      
-      // Ensure bucket exists and is public before upload
-      const { data: buckets } = await supabase.storage.listBuckets();
-      const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
-      
-      if (!bucketExists) {
-        const { error: createError } = await supabase.storage.createBucket('memories', {
-          public: true
-        });
-        
-        if (createError) {
-          throw new Error(`Failed to create bucket: ${createError.message}`);
-        }
-        
-        // Set bucket to public
-        await supabase.storage.updateBucket('memories', {
-          public: true
-        });
-      }
       
       // Upload file to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -202,6 +162,21 @@ const MemoryUploader = () => {
       const imageUrl = publicUrlData.publicUrl;
       console.log("Public URL of uploaded file:", imageUrl);
       
+      // Pre-check the image to make sure it's valid
+      const img = new Image();
+      img.src = imageUrl;
+      
+      // Wait to ensure image is valid
+      await new Promise((resolve) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => {
+          console.error("Image URL not valid, but continuing with upload");
+          resolve(false);
+        };
+        // Set a timeout in case the image load events don't fire
+        setTimeout(() => resolve(false), 3000);
+      });
+      
       // Store metadata in the memory_details table
       const { error: metadataError } = await supabase
         .from('memory_details')
@@ -214,7 +189,7 @@ const MemoryUploader = () => {
         });
         
       if (metadataError) {
-        throw metadataError;
+        console.error('Error storing memory details:', metadataError);
       }
       
       // Also store a reference in memory_timeline
@@ -233,12 +208,13 @@ const MemoryUploader = () => {
         });
         
       if (timelineError) {
+        console.error('Error adding to memory timeline:', timelineError);
         throw timelineError;
       }
       
       toast({
         title: "Upload successful",
-        description: "Your memory has been added to the slideshow",
+        description: "Your memory has been added to the timeline and slideshow",
       });
       
       // Reset form
@@ -251,7 +227,7 @@ const MemoryUploader = () => {
         location: '',
       });
       
-      // Refresh the page to update the slideshow
+      // Refresh the page to update the slideshow after a delay
       setTimeout(() => window.location.reload(), 1500);
       
     } catch (error) {

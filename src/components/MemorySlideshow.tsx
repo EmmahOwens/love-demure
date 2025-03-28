@@ -263,12 +263,15 @@ const MemorySlideshow = () => {
     });
   };
 
-  const handleCarouselSelect = (carouselApi: any) => {
-    if (carouselApi && typeof carouselApi.selectedScrollSnap === 'function') {
-      const index = carouselApi.selectedScrollSnap();
+  const handleCarouselSelect = React.useCallback((api: any) => {
+    if (!api) return;
+    try {
+      const index = api.selectedScrollSnap();
       setCurrentIndex(index);
+    } catch (error) {
+      console.error('Error in handleCarouselSelect:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMemories();
