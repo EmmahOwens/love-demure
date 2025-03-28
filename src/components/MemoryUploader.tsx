@@ -34,7 +34,13 @@ const MemoryUploader = () => {
     const checkBucket = async () => {
       try {
         // Check if the bucket exists
-        const { data: buckets } = await supabase.storage.listBuckets();
+        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+        
+        if (bucketsError) {
+          console.error("Error listing buckets:", bucketsError);
+          return;
+        }
+        
         const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
         
         if (!bucketExists) {
@@ -45,9 +51,29 @@ const MemoryUploader = () => {
           
           if (error) {
             console.error("Error creating memories bucket:", error);
-            // Don't throw here, let the user try uploading still
           } else {
             console.log("Successfully created 'memories' bucket");
+            
+            // Update bucket to be public
+            const { error: updateError } = await supabase.storage.updateBucket('memories', {
+              public: true,
+              fileSizeLimit: 5242880 // 5MB limit
+            });
+            
+            if (updateError) {
+              console.error("Error updating bucket policy:", updateError);
+            }
+          }
+        } else {
+          // If bucket exists, ensure it's public
+          const { error: updateError } = await supabase.storage.updateBucket('memories', {
+            public: true
+          });
+          
+          if (updateError) {
+            console.error("Error updating existing bucket to public:", updateError);
+          } else {
+            console.log("Existing 'memories' bucket confirmed as public");
           }
         }
       } catch (error) {
@@ -133,6 +159,25 @@ const MemoryUploader = () => {
       const fileName = `${randomId}_${timestamp}.${fileExt}`;
       
       console.log(`Uploading file ${fileName} to 'memories' bucket`);
+      
+      // Ensure bucket exists and is public before upload
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+      
+      if (!bucketExists) {
+        const { error: createError } = await supabase.storage.createBucket('memories', {
+          public: true
+        });
+        
+        if (createError) {
+          throw new Error(`Failed to create bucket: ${createError.message}`);
+        }
+        
+        // Set bucket to public
+        await supabase.storage.updateBucket('memories', {
+          public: true
+        });
+      }
       
       // Upload file to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage

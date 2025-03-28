@@ -70,14 +70,14 @@ const MemorySlideshow = () => {
   useEffect(() => {
     const ensureBucketExists = async () => {
       try {
-        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+        const { data: buckets } = await supabase.storage.listBuckets();
         
-        if (bucketsError) {
-          console.error("Error listing buckets:", bucketsError);
+        if (!buckets) {
+          console.error("Unable to list buckets");
           return;
         }
         
-        const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
+        const bucketExists = buckets.some(bucket => bucket.name === 'memories');
         
         if (!bucketExists) {
           console.log("Creating 'memories' bucket as it doesn't exist");
@@ -90,18 +90,24 @@ const MemorySlideshow = () => {
           } else {
             console.log("Successfully created 'memories' bucket");
             
-            try {
-              const { error: policyError } = await supabase.storage.updateBucket('memories', {
-                public: true,
-                fileSizeLimit: 5242880 // 5MB limit
-              });
-              
-              if (policyError) {
-                console.error("Unable to set policy automatically:", policyError);
-              }
-            } catch (policyErr) {
-              console.warn("Unable to set policy automatically. This may require manual configuration:", policyErr);
+            const { error: updateError } = await supabase.storage.updateBucket('memories', {
+              public: true,
+              fileSizeLimit: 5242880 // 5MB limit
+            });
+            
+            if (updateError) {
+              console.error("Error updating bucket policy:", updateError);
             }
+          }
+        } else {
+          const { error: updateError } = await supabase.storage.updateBucket('memories', {
+            public: true
+          });
+          
+          if (updateError) {
+            console.error("Error updating existing bucket to public:", updateError);
+          } else {
+            console.log("Existing 'memories' bucket made public");
           }
         }
       } catch (error) {
@@ -109,7 +115,7 @@ const MemorySlideshow = () => {
       }
     };
     
-    ensureBucketExists();
+    ensureBucketExists().then(() => fetchMemories());
   }, []);
 
   const fetchMemories = async () => {
@@ -124,84 +130,120 @@ const MemorySlideshow = () => {
         
       if (filesError) {
         console.error('Error listing files:', filesError);
-      } else if (files && files.length > 0) {
-        console.log(`Found ${files.length} files in storage`);
-        
-        const storageMemories: MemoryImage[] = [];
-        
-        for (const file of files) {
-          try {
-            const { data: publicUrlData } = supabase
-              .storage
-              .from('memories')
-              .getPublicUrl(file.name);
-              
-            const { data: detailsData, error: detailsError } = await supabase
-              .from('memory_details')
-              .select('*')
-              .eq('file_name', file.name)
-              .maybeSingle();
-
-            if (detailsError) {
-              console.error(`Error fetching details for file ${file.name}:`, detailsError);
-            }
-              
-            storageMemories.push({
-              id: detailsData?.id || file.id || Math.random().toString(),
-              url: publicUrlData.publicUrl,
-              fileName: file.name,
-              displayName: detailsData?.display_name || file.name.split('_')[0],
-              description: detailsData?.description || null,
-              dateTaken: detailsData?.date_taken || null,
-              location: detailsData?.location || null
-            });
-          } catch (err) {
-            console.error(`Error processing file ${file.name}:`, err);
+        throw new Error(`Failed to list files: ${filesError.message}`);
+      }
+      
+      if (!files || files.length === 0) {
+        console.log('No files found in storage');
+        setMemories([]);
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`Found ${files.length} files in storage:`, files);
+      
+      const storageMemories: MemoryImage[] = [];
+      
+      for (const file of files) {
+        try {
+          if (file.name === '.emptyFolderPlaceholder') {
+            continue;
           }
-        }
-        
-        const { data: timelineData, error: timelineError } = await supabase
-          .from('memory_timeline')
-          .select('*')
-          .order('raw_date', { ascending: false });
           
-        if (timelineError) {
-          console.error('Error fetching memory timeline:', timelineError);
-        } else if (timelineData && timelineData.length > 0) {
-          console.log(`Found ${timelineData.length} entries in memory_timeline`);
-          
-          for (const timeline of timelineData) {
-            const existingIndex = storageMemories.findIndex(m => 
-              (timeline.image_url && m.url === timeline.image_url) || 
-              (timeline.title && m.displayName === timeline.title)
-            );
+          const { data: publicUrlData } = supabase
+            .storage
+            .from('memories')
+            .getPublicUrl(file.name);
             
-            if (existingIndex >= 0) {
-              storageMemories[existingIndex] = {
-                ...storageMemories[existingIndex],
-                id: timeline.id || storageMemories[existingIndex].id,
-                displayName: timeline.title || storageMemories[existingIndex].displayName,
-                description: timeline.description || storageMemories[existingIndex].description,
-                dateTaken: timeline.raw_date || storageMemories[existingIndex].dateTaken,
-              };
-            } else if (timeline.image_url) {
-              storageMemories.push({
-                id: timeline.id,
-                url: timeline.image_url,
-                fileName: '',
-                displayName: timeline.title,
-                description: timeline.description || null,
-                dateTaken: timeline.raw_date,
-                location: null
-              });
-            }
+          if (!publicUrlData || !publicUrlData.publicUrl) {
+            console.error(`Failed to get public URL for ${file.name}`);
+            continue;
+          }
+          
+          const { data: detailsData, error: detailsError } = await supabase
+            .from('memory_details')
+            .select('*')
+            .eq('file_name', file.name)
+            .maybeSingle();
+
+          if (detailsError) {
+            console.error(`Error fetching details for file ${file.name}:`, detailsError);
+          }
+          
+          const memoryId = detailsData?.id || file.id || crypto.randomUUID();
+          
+          console.log(`Processing file: ${file.name}`, {
+            publicUrl: publicUrlData.publicUrl,
+            hasDetails: !!detailsData
+          });
+          
+          const img = new Image();
+          img.src = publicUrlData.publicUrl;
+          
+          storageMemories.push({
+            id: memoryId,
+            url: publicUrlData.publicUrl,
+            fileName: file.name,
+            displayName: detailsData?.display_name || file.name.split('_')[0].replace(/([a-z])([A-Z])/g, '$1 $2'),
+            description: detailsData?.description || null,
+            dateTaken: detailsData?.date_taken || null,
+            location: detailsData?.location || null
+          });
+        } catch (err) {
+          console.error(`Error processing file ${file.name}:`, err);
+        }
+      }
+      
+      const { data: timelineData, error: timelineError } = await supabase
+        .from('memory_timeline')
+        .select('*')
+        .order('raw_date', { ascending: false });
+        
+      if (timelineError) {
+        console.error('Error fetching memory timeline:', timelineError);
+      } else if (timelineData && timelineData.length > 0) {
+        console.log(`Found ${timelineData.length} entries in memory_timeline`);
+        
+        for (const timeline of timelineData) {
+          const existingIndex = storageMemories.findIndex(m => 
+            (timeline.image_url && m.url === timeline.image_url) || 
+            (timeline.title && m.displayName === timeline.title)
+          );
+          
+          if (existingIndex >= 0) {
+            storageMemories[existingIndex] = {
+              ...storageMemories[existingIndex],
+              id: timeline.id || storageMemories[existingIndex].id,
+              displayName: timeline.title || storageMemories[existingIndex].displayName,
+              description: timeline.description || storageMemories[existingIndex].description,
+              dateTaken: timeline.raw_date || storageMemories[existingIndex].dateTaken,
+            };
+          } else if (timeline.image_url) {
+            const img = new Image();
+            img.src = timeline.image_url;
+            
+            storageMemories.push({
+              id: timeline.id,
+              url: timeline.image_url,
+              fileName: '',
+              displayName: timeline.title,
+              description: timeline.description || null,
+              dateTaken: timeline.raw_date,
+              location: null
+            });
           }
         }
-        
-        const uniqueMemories = removeDuplicatesByKey(storageMemories, 'url');
-        setMemories(uniqueMemories);
+      }
+      
+      const uniqueMemories = removeDuplicatesByKey(storageMemories, 'url');
+      
+      if (uniqueMemories.length === 0) {
+        console.log('No unique memories found after processing');
+      } else {
         console.log(`Found ${uniqueMemories.length} unique memories for display`);
       }
+      
+      setMemories(uniqueMemories);
     } catch (err) {
       console.error('Error in memory fetch:', err);
       setError(err instanceof Error ? err.message : 'Unknown error fetching images');
@@ -312,6 +354,7 @@ const MemorySlideshow = () => {
   });
 
   const handleImageLoad = (id: string) => {
+    console.log(`Image with ID ${id} loaded successfully`);
     setImagesLoaded(prev => ({
       ...prev,
       [id]: true
@@ -498,7 +541,6 @@ const MemorySlideshow = () => {
             "neu-element p-6 relative transition-all duration-300", 
             isFullscreen && "fixed inset-0 z-50 p-4 max-w-none neu-element-inset"
           )}
-          {...swipeHandlers}
         >
           <Carousel 
             className="w-full"
@@ -507,7 +549,12 @@ const MemorySlideshow = () => {
               align: "center",
             }}
             setApi={setApi}
-            onSelect={handleCarouselSelect}
+            onSelect={(api) => {
+              if (api) {
+                const index = api.selectedScrollSnap();
+                setCurrentIndex(index);
+              }
+            }}
           >
             <CarouselContent>
               {memories.map((memory, index) => (

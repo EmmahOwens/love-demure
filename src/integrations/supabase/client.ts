@@ -28,7 +28,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
       } else {
         console.log("Successfully created 'memories' bucket");
         
-        // Instead of using RPC (which is not available), we'll set bucket policy directly
+        // Set bucket policy directly
         try {
           // Make the bucket public by using the storage.updateBucket API
           const { error: policyError } = await supabase.storage.updateBucket('memories', {
@@ -42,6 +42,14 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
         } catch (policyErr) {
           console.error("Error setting bucket policy:", policyErr);
         }
+      }
+    } else {
+      // If bucket exists, make sure it's public
+      const { error: updateError } = await supabase.storage.updateBucket('memories', {
+        public: true
+      });
+      if (updateError) {
+        console.error("Error updating existing bucket to public:", updateError);
       }
     }
   } catch (error) {
