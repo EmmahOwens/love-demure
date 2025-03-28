@@ -28,15 +28,19 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
       } else {
         console.log("Successfully created 'memories' bucket");
         
-        // Add public access policy to the bucket
-        const { error: policyError } = await supabase.rpc('create_bucket_policy', {
-          bucket_name: 'memories',
-          policy_name: 'Public Access',
-          definition: "bucket_id = 'memories'"
-        });
-        
-        if (policyError) {
-          console.error("Error setting public policy:", policyError);
+        // Instead of using RPC (which is not available), we'll set bucket policy directly
+        try {
+          // Make the bucket public by using the storage.updateBucket API
+          const { error: policyError } = await supabase.storage.updateBucket('memories', {
+            public: true,
+            fileSizeLimit: 5242880 // 5MB limit
+          });
+          
+          if (policyError) {
+            console.error("Error setting public policy:", policyError);
+          }
+        } catch (policyErr) {
+          console.error("Error setting bucket policy:", policyErr);
         }
       }
     }

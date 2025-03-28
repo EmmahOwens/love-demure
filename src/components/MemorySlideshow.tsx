@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { 
@@ -91,19 +90,17 @@ const MemorySlideshow = () => {
           } else {
             console.log("Successfully created 'memories' bucket");
             
-            // Also create the public policy for the bucket
-            const { error: policyError } = await supabase.rpc('create_bucket_policy', {
-              bucket_name: 'memories',
-              policy_name: 'Public Access',
-              definition: "bucket_id = 'memories'"
-            }).catch(e => {
-              // If the RPC doesn't exist, we'll ignore it and continue
-              console.warn("Unable to create bucket policy via RPC, will need manual configuration:", e);
-              return { error: e };
-            });
-            
-            if (policyError) {
-              console.warn("Unable to set policy automatically. This may require manual configuration.");
+            try {
+              const { error: policyError } = await supabase.storage.updateBucket('memories', {
+                public: true,
+                fileSizeLimit: 5242880 // 5MB limit
+              });
+              
+              if (policyError) {
+                console.error("Unable to set policy automatically:", policyError);
+              }
+            } catch (policyErr) {
+              console.warn("Unable to set policy automatically. This may require manual configuration:", policyErr);
             }
           }
         }
@@ -120,7 +117,6 @@ const MemorySlideshow = () => {
       setLoading(true);
       setError(null);
       
-      // Direct approach: load all files from storage
       const { data: files, error: filesError } = await supabase
         .storage
         .from('memories')
@@ -131,25 +127,25 @@ const MemorySlideshow = () => {
       } else if (files && files.length > 0) {
         console.log(`Found ${files.length} files in storage`);
         
-        // Create memory entries from storage files
         const storageMemories: MemoryImage[] = [];
         
         for (const file of files) {
           try {
-            // Get public URL for file
             const { data: publicUrlData } = supabase
               .storage
               .from('memories')
               .getPublicUrl(file.name);
               
-            // Try to find metadata in memory_details
-            const { data: detailsData } = await supabase
+            const { data: detailsData, error: detailsError } = await supabase
               .from('memory_details')
               .select('*')
               .eq('file_name', file.name)
               .maybeSingle();
+
+            if (detailsError) {
+              console.error(`Error fetching details for file ${file.name}:`, detailsError);
+            }
               
-            // Create memory entry
             storageMemories.push({
               id: detailsData?.id || file.id || Math.random().toString(),
               url: publicUrlData.publicUrl,
@@ -164,7 +160,6 @@ const MemorySlideshow = () => {
           }
         }
         
-        // Now get entries from memory_timeline too
         const { data: timelineData, error: timelineError } = await supabase
           .from('memory_timeline')
           .select('*')
@@ -175,16 +170,13 @@ const MemorySlideshow = () => {
         } else if (timelineData && timelineData.length > 0) {
           console.log(`Found ${timelineData.length} entries in memory_timeline`);
           
-          // Process timeline entries
           for (const timeline of timelineData) {
-            // Check if we already have this memory (by URL)
             const existingIndex = storageMemories.findIndex(m => 
               (timeline.image_url && m.url === timeline.image_url) || 
               (timeline.title && m.displayName === timeline.title)
             );
             
             if (existingIndex >= 0) {
-              // Update the existing entry with any additional info
               storageMemories[existingIndex] = {
                 ...storageMemories[existingIndex],
                 id: timeline.id || storageMemories[existingIndex].id,
@@ -193,7 +185,6 @@ const MemorySlideshow = () => {
                 dateTaken: timeline.raw_date || storageMemories[existingIndex].dateTaken,
               };
             } else if (timeline.image_url) {
-              // It's a new entry with its own URL
               storageMemories.push({
                 id: timeline.id,
                 url: timeline.image_url,
@@ -207,7 +198,6 @@ const MemorySlideshow = () => {
           }
         }
         
-        // Deduplicate and sort memories
         const uniqueMemories = removeDuplicatesByKey(storageMemories, 'url');
         setMemories(uniqueMemories);
         console.log(`Found ${uniqueMemories.length} unique memories for display`);
@@ -221,7 +211,6 @@ const MemorySlideshow = () => {
     }
   };
 
-  // Better deduplication helper
   const removeDuplicatesByKey = <T extends Record<string, any>>(arr: T[], key: keyof T): T[] => {
     const seen = new Set<string>();
     return arr.filter(item => {
@@ -232,11 +221,17 @@ const MemorySlideshow = () => {
     });
   };
 
+  const handleCarouselSelect = (carouselApi: any) => {
+    if (carouselApi && typeof carouselApi.selectedScrollSnap === 'function') {
+      const index = carouselApi.selectedScrollSnap();
+      setCurrentIndex(index);
+    }
+  };
+
   useEffect(() => {
     fetchMemories();
   }, []);
 
-  // Handle autoplay with the Carousel API
   useEffect(() => {
     if (!autoplayEnabled || memories.length <= 1 || isRefreshing || !api) return;
     
@@ -247,7 +242,6 @@ const MemorySlideshow = () => {
     return () => clearInterval(interval);
   }, [memories.length, autoplayEnabled, isRefreshing, api]);
 
-  // Handle fullscreen mouse movement
   useEffect(() => {
     if (!isFullscreen) return;
     
@@ -272,7 +266,6 @@ const MemorySlideshow = () => {
     };
   }, [isFullscreen, controlsTimeout]);
 
-  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isFullscreen) {
@@ -302,7 +295,6 @@ const MemorySlideshow = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
-  // Handle slide navigation
   const navigateSlide = useCallback((direction: 'prev' | 'next') => {
     if (memories.length <= 1 || !api) return;
     
@@ -313,14 +305,12 @@ const MemorySlideshow = () => {
     }
   }, [memories.length, api]);
 
-  // Set up swipe handlers
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => navigateSlide('next'),
     onSwipedRight: () => navigateSlide('prev'),
     trackMouse: true
   });
 
-  // Handle image load/error
   const handleImageLoad = (id: string) => {
     setImagesLoaded(prev => ({
       ...prev,
@@ -517,11 +507,7 @@ const MemorySlideshow = () => {
               align: "center",
             }}
             setApi={setApi}
-            onSelect={(api) => {
-              if (api && typeof api.selectedScrollSnap === 'function') {
-                setCurrentIndex(api.selectedScrollSnap());
-              }
-            }}
+            onSelect={handleCarouselSelect}
           >
             <CarouselContent>
               {memories.map((memory, index) => (
