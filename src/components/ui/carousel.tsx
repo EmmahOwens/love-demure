@@ -29,6 +29,7 @@ type CarouselContextProps = {
   canScrollNext: boolean
   selectedIndex: number
   scrollTo: (index: number) => void
+  slideCount: number
 } & CarouselProps
 
 const CarouselContext = React.createContext<CarouselContextProps | null>(null)
@@ -69,6 +70,7 @@ const Carousel = React.forwardRef<
     const [canScrollPrev, setCanScrollPrev] = React.useState(false)
     const [canScrollNext, setCanScrollNext] = React.useState(false)
     const [selectedIndex, setSelectedIndex] = React.useState(0)
+    const [slideCount, setSlideCount] = React.useState(0)
 
     const onSelect = React.useCallback((api: CarouselApi) => {
       if (!api) {
@@ -78,6 +80,7 @@ const Carousel = React.forwardRef<
       setSelectedIndex(api.selectedScrollSnap())
       setCanScrollPrev(api.canScrollPrev())
       setCanScrollNext(api.canScrollNext())
+      setSlideCount(api.slideNodes().length)
     }, [])
 
     const scrollPrev = React.useCallback(() => {
@@ -141,6 +144,7 @@ const Carousel = React.forwardRef<
           canScrollNext,
           selectedIndex,
           scrollTo,
+          slideCount,
         }}
       >
         <div
@@ -336,6 +340,76 @@ const CarouselThumbnails = React.forwardRef<
 })
 CarouselThumbnails.displayName = "CarouselThumbnails"
 
+// New component for pagination
+const CarouselPagination = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
+  const { selectedIndex, slideCount, scrollTo } = useCarousel()
+  
+  // Calculate pagination range
+  const displayPages = 5; // Number of page buttons to show
+  const halfDisplay = Math.floor(displayPages / 2);
+  let startPage = Math.max(0, selectedIndex - halfDisplay);
+  let endPage = Math.min(slideCount - 1, startPage + displayPages - 1);
+  
+  // Adjust if we're near the end
+  if (endPage - startPage < displayPages - 1) {
+    startPage = Math.max(0, endPage - displayPages + 1);
+  }
+  
+  const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+  
+  return (
+    <div 
+      ref={ref}
+      className={cn("flex items-center justify-center gap-1 mt-4", className)}
+      {...props}
+    >
+      {slideCount > displayPages && selectedIndex > 0 && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 rounded-full"
+          onClick={() => scrollTo(0)}
+        >
+          <span>&laquo;</span>
+          <span className="sr-only">First slide</span>
+        </Button>
+      )}
+      
+      {pages.map(page => (
+        <Button
+          key={page}
+          variant={page === selectedIndex ? "default" : "outline"}
+          size="sm"
+          className={cn(
+            "h-8 w-8 rounded-full p-0",
+            page === selectedIndex && "bg-primary text-primary-foreground"
+          )}
+          onClick={() => scrollTo(page)}
+        >
+          {page + 1}
+          <span className="sr-only">Page {page + 1}</span>
+        </Button>
+      ))}
+      
+      {slideCount > displayPages && selectedIndex < slideCount - 1 && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 rounded-full"
+          onClick={() => scrollTo(slideCount - 1)}
+        >
+          <span>&raquo;</span>
+          <span className="sr-only">Last slide</span>
+        </Button>
+      )}
+    </div>
+  )
+})
+CarouselPagination.displayName = "CarouselPagination"
+
 export {
   type CarouselApi,
   Carousel,
@@ -344,5 +418,6 @@ export {
   CarouselPrevious,
   CarouselNext,
   CarouselDots,
-  CarouselThumbnails
+  CarouselThumbnails,
+  CarouselPagination
 }

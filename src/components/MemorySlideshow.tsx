@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { 
   Carousel,
@@ -23,7 +22,12 @@ import {
   Heart,
   ChevronLeft, 
   ChevronRight,
-  Info
+  Info,
+  Maximize,
+  Minimize,
+  Share2,
+  Download,
+  Bookmark
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -35,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSwipeable } from 'react-swipeable';
 
 interface MemoryImage {
   id: string;
@@ -56,8 +61,10 @@ const MemorySlideshow = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+  const [isBookmarked, setIsBookmarked] = useState<Record<string, boolean>>({});
+  const [showControls, setShowControls] = useState(true);
+  const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Create the memories bucket if it doesn't exist
   useEffect(() => {
     const ensureBucketExists = async () => {
       try {
@@ -90,13 +97,11 @@ const MemorySlideshow = () => {
     ensureBucketExists();
   }, []);
 
-  // Fetch memories from both memory_timeline and memory_details
   const fetchMemories = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // First, get all the records from memory_timeline
       const { data: timelineData, error: timelineError } = await supabase
         .from('memory_timeline')
         .select('*')
@@ -108,7 +113,6 @@ const MemorySlideshow = () => {
       
       console.log(`Found ${timelineData?.length || 0} records in memory_timeline`);
       
-      // Then, get all records from memory_details
       const { data: detailsData, error: detailsError } = await supabase
         .from('memory_details')
         .select('*')
@@ -120,17 +124,13 @@ const MemorySlideshow = () => {
       
       console.log(`Found ${detailsData?.length || 0} records in memory_details`);
       
-      // Process both data sources
       const memoryImagesPromises: Promise<MemoryImage | null>[] = [];
       
-      // Process memory_timeline records
       if (timelineData && timelineData.length > 0) {
         timelineData.forEach(timeline => {
           if (timeline.image_url) {
-            // If the timeline entry has an image_url, use it directly
             memoryImagesPromises.push(processTimelineMemory(timeline));
           } else {
-            // If it doesn't have an image_url, try to find a matching entry in memory_details
             const matchingDetail = detailsData?.find(detail => {
               if (!timeline.raw_date || !detail.date_taken) return false;
               
@@ -140,20 +140,16 @@ const MemorySlideshow = () => {
             });
             
             if (matchingDetail) {
-              // Use the file from memory_details
               memoryImagesPromises.push(processDetailMemory(matchingDetail, timeline));
             } else {
-              // Just use the timeline data without an image
               memoryImagesPromises.push(processTimelineMemory(timeline));
             }
           }
         });
       }
       
-      // Process any memory_details records that don't have a matching timeline entry
       if (detailsData && detailsData.length > 0) {
         detailsData.forEach(detail => {
-          // Check if this detail already has a matching timeline entry
           const hasMatchingTimeline = timelineData?.some(timeline => {
             if (!timeline.raw_date || !detail.date_taken) return false;
             
@@ -168,17 +164,14 @@ const MemorySlideshow = () => {
         });
       }
       
-      // Resolve all promises and filter out null results
       const memoryImages = (await Promise.all(memoryImagesPromises))
         .filter(Boolean) as MemoryImage[];
       
       if (memoryImages.length > 0) {
-        // Remove duplicates based on URL
         const uniqueMemories = removeDuplicates(memoryImages, 'url');
         setMemories(uniqueMemories);
         console.log(`Processed ${uniqueMemories.length} unique memories for display`);
       } else {
-        // No memories found
         console.log("No memory images found to display");
       }
     } catch (err) {
@@ -189,17 +182,14 @@ const MemorySlideshow = () => {
       setIsRefreshing(false);
     }
   };
-  
-  // Helper function to remove duplicates from array
+
   const removeDuplicates = (arr: any[], key: string) => {
     return [...new Map(arr.map(item => [item[key], item])).values()];
   };
 
-  // Process a memory from the timeline table
   const processTimelineMemory = async (timeline: any): Promise<MemoryImage | null> => {
     try {
       if (timeline.image_url) {
-        // Pre-check if the image loads
         const imageLoads = await checkImageLoads(timeline.image_url);
         
         if (!imageLoads) {
@@ -221,7 +211,6 @@ const MemorySlideshow = () => {
         };
       }
       
-      // Return null if there's no image
       return null;
     } catch (e) {
       console.error(`Error processing timeline memory ${timeline.id}:`, e);
@@ -229,10 +218,8 @@ const MemorySlideshow = () => {
     }
   };
 
-  // Process a memory from the details table
   const processDetailMemory = async (detail: any, timeline?: any): Promise<MemoryImage | null> => {
     try {
-      // Generate the public URL for the file
       const { data: publicUrlData } = supabase
         .storage
         .from('memories')
@@ -240,7 +227,6 @@ const MemorySlideshow = () => {
       
       console.log(`Generated URL for ${detail.file_name}: ${publicUrlData.publicUrl}`);
       
-      // Pre-check if the image loads
       const imageLoads = await checkImageLoads(publicUrlData.publicUrl);
       
       if (!imageLoads) {
@@ -266,12 +252,10 @@ const MemorySlideshow = () => {
     }
   };
 
-  // Fetch data on component mount
   useEffect(() => {
     fetchMemories();
   }, []);
 
-  // Helper function to check if an image loads
   const checkImageLoads = (url: string): Promise<boolean> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -281,7 +265,6 @@ const MemorySlideshow = () => {
     });
   };
 
-  // Autoplay functionality for the slideshow
   useEffect(() => {
     if (!autoplayEnabled || memories.length <= 1 || isRefreshing) return;
     
@@ -289,10 +272,82 @@ const MemorySlideshow = () => {
       setCurrentIndex(prevIndex => 
         prevIndex === memories.length - 1 ? 0 : prevIndex + 1
       );
-    }, 5000); // Change slide every 5 seconds
+    }, 5000);
     
     return () => clearInterval(interval);
   }, [memories.length, autoplayEnabled, isRefreshing]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    
+    const handleMouseMove = () => {
+      setShowControls(true);
+      
+      if (controlsTimeout) {
+        clearTimeout(controlsTimeout);
+      }
+      
+      const timeout = setTimeout(() => {
+        setShowControls(false);
+      }, 3000);
+      
+      setControlsTimeout(timeout);
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (controlsTimeout) clearTimeout(controlsTimeout);
+    };
+  }, [isFullscreen, controlsTimeout]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isFullscreen) {
+        switch (e.key) {
+          case 'ArrowLeft':
+            navigateSlide('prev');
+            break;
+          case 'ArrowRight':
+            navigateSlide('next');
+            break;
+          case 'Escape':
+            setIsFullscreen(false);
+            break;
+          case ' ':  // spacebar
+            setAutoplayEnabled(prev => !prev);
+            break;
+          case 'i':
+            setShowInfo(prev => !prev);
+            break;
+          default:
+            break;
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
+  const navigateSlide = useCallback((direction: 'prev' | 'next') => {
+    if (memories.length <= 1) return;
+    
+    setCurrentIndex(prevIndex => {
+      if (direction === 'prev') {
+        return prevIndex === 0 ? memories.length - 1 : prevIndex - 1;
+      } else {
+        return prevIndex === memories.length - 1 ? 0 : prevIndex + 1;
+      }
+    });
+  }, [memories.length]);
+
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => navigateSlide('next'),
+    onSwipedRight: () => navigateSlide('prev'),
+    preventDefaultTouchmoveEvent: true,
+    trackMouse: true
+  });
 
   const handleImageError = (id: string) => {
     console.log(`Image with ID ${id} failed to load`);
@@ -311,6 +366,50 @@ const MemorySlideshow = () => {
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
     setShowInfo(!isFullscreen);
+    setShowControls(true);
+  };
+
+  const handleBookmark = (memoryId: string) => {
+    setIsBookmarked(prev => ({
+      ...prev,
+      [memoryId]: !prev[memoryId]
+    }));
+    
+    toast.success(
+      isBookmarked[memoryId] 
+        ? "Memory removed from favorites" 
+        : "Memory added to favorites"
+    );
+  };
+
+  const handleShare = () => {
+    if (navigator.share && memories[currentIndex]) {
+      navigator.share({
+        title: memories[currentIndex].displayName,
+        text: memories[currentIndex].description || 'Check out this memory!',
+        url: window.location.href,
+      }).catch(error => {
+        console.error('Error sharing:', error);
+        toast.error("Couldn't share this memory");
+      });
+    } else {
+      toast.info("Sharing not supported on this device");
+    }
+  };
+
+  const handleDownload = () => {
+    if (memories[currentIndex] && !imageErrors[memories[currentIndex].id]) {
+      const memory = memories[currentIndex];
+      const link = document.createElement('a');
+      link.href = memory.url;
+      link.download = memory.fileName || `memory-${memory.id}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Downloading memory...");
+    } else {
+      toast.error("Cannot download this image");
+    }
   };
 
   if (memories.length === 0 && !loading) {
@@ -340,7 +439,6 @@ const MemorySlideshow = () => {
     );
   }
 
-  // Create thumbnail data
   const thumbnailData = memories.map(memory => ({
     src: memory.url,
     alt: memory.displayName
@@ -426,10 +524,13 @@ const MemorySlideshow = () => {
           {error}
         </div>
       ) : (
-        <div className={cn(
-          "neu-element p-6 relative transition-all duration-300", 
-          isFullscreen && "fixed inset-0 z-50 p-4 max-w-none neu-element-inset"
-        )}>
+        <div 
+          className={cn(
+            "neu-element p-6 relative transition-all duration-300", 
+            isFullscreen && "fixed inset-0 z-50 p-4 max-w-none neu-element-inset"
+          )}
+          {...swipeHandlers}
+        >
           <Carousel 
             className="w-full"
             opts={{
@@ -545,14 +646,100 @@ const MemorySlideshow = () => {
             </div>
             
             {isFullscreen && (
+              <>
+                <div className={cn(
+                  "fixed inset-0 pointer-events-none z-10",
+                  !showControls && "opacity-0"
+                )} />
+                <div className={cn(
+                  "fixed top-4 right-4 flex items-center gap-2 transition-opacity duration-300 z-20",
+                  !showControls && "opacity-0"
+                )}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowInfo(!showInfo)}
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                  >
+                    <Info size={16} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleBookmark(memories[currentIndex].id)}
+                    className={cn(
+                      "bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all",
+                      isBookmarked[memories[currentIndex].id] && "text-primary bg-black/30"
+                    )}
+                  >
+                    <Bookmark size={16} fill={isBookmarked[memories[currentIndex].id] ? "currentColor" : "none"} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleShare}
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                  >
+                    <Share2 size={16} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleDownload}
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                  >
+                    <Download size={16} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={toggleFullscreen}
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                  >
+                    <Minimize size={16} />
+                  </Button>
+                </div>
+                
+                <div className={cn(
+                  "fixed left-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
+                  !showControls && "opacity-0"
+                )}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
+                    onClick={() => navigateSlide('prev')}
+                  >
+                    <ChevronLeft size={24} />
+                  </Button>
+                </div>
+                
+                <div className={cn(
+                  "fixed right-4 top-1/2 transform -translate-y-1/2 transition-opacity duration-300 z-20",
+                  !showControls && "opacity-0"
+                )}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all h-10 w-10"
+                    onClick={() => navigateSlide('next')}
+                  >
+                    <ChevronRight size={24} />
+                  </Button>
+                </div>
+              </>
+            )}
+            
+            {!isFullscreen && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={toggleFullscreen}
-                  className="bg-black/20 text-white border-white/10 hover:bg-black/40 transition-all"
+                  className="flex items-center gap-1"
                 >
-                  Exit Fullscreen
+                  <Maximize size={14} className="mr-1" />
+                  Fullscreen
                 </Button>
               </div>
             )}
@@ -563,7 +750,6 @@ const MemorySlideshow = () => {
   );
 };
 
-// Helper to conditionally join classes
 const cn = (...classes: (string | boolean | undefined)[]) => {
   return classes.filter(Boolean).join(' ');
 };
