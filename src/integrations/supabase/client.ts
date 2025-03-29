@@ -11,35 +11,5 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
-// Ensure the memories bucket exists and is properly configured
-export const ensureMemoriesBucket = async () => {
-  try {
-    // Check if the memories bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === 'memories');
-    
-    if (!bucketExists) {
-      console.log("Creating 'memories' bucket...");
-      const { error } = await supabase.storage.createBucket('memories', {
-        public: true
-      });
-      
-      if (error) {
-        console.error("Error creating memories bucket:", error);
-        return false;
-      }
-      
-      console.log("Successfully created 'memories' bucket");
-    }
-    
-    // The bucket should now exist with proper RLS policies
-    console.log("Memories bucket is ready to use");
-    return true;
-  } catch (error) {
-    console.error("Error managing memories bucket:", error);
-    return false;
-  }
-};
-
-// Initialize the bucket when the client is loaded
-ensureMemoriesBucket();
+// NOTE: No longer trying to create the bucket on client initialization
+// This avoids the RLS errors since bucket creation should be done through SQL migrations

@@ -39,7 +39,7 @@ const MemoryTimeline: React.FC = () => {
           title: memory.title,
           description: memory.description || '',
           date: memory.date,
-          imageUrl: memory.image_url || '',
+          imageUrl: '', // We're not using images anymore
           rawDate: memory.raw_date ? new Date(memory.raw_date) : undefined
         }));
         
@@ -157,7 +157,7 @@ const MemoryTimeline: React.FC = () => {
         title: newMemoryData.title,
         description: newMemoryData.description || '',
         date: newMemoryData.date,
-        imageUrl: newMemoryData.image_url || '',
+        imageUrl: '',
         rawDate: new Date(newMemoryData.raw_date)
       };
       
