@@ -184,7 +184,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
     if (!url) return false;
     
     return new Promise((resolve) => {
-      const img = new Image();
+      const img = document.createElement('img');
       
       const timeout = setTimeout(() => {
         console.warn(`Image load timeout: ${url}`);
@@ -341,3 +341,4 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
 };
 
 export default MemoryCard;
+
