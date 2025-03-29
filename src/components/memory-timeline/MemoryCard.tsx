@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Heart, PenLine, Trash2, Image } from 'lucide-react';
+import { Heart, PenLine, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Memory } from './types';
 import {
@@ -270,7 +270,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
         <div className="w-full h-40 bg-muted/50 rounded-lg mt-4 overflow-hidden relative">
           {!imageUrl && !isRetrying && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Image className="w-10 h-10 text-muted-foreground/60" />
+              <p className="text-muted-foreground text-sm">No image available</p>
             </div>
           )}
           
