@@ -32,19 +32,9 @@ export const ensureMemoriesBucket = async () => {
       console.log("Successfully created 'memories' bucket");
     }
     
-    // Always update the bucket to ensure it's public
-    const { error: updateError } = await supabase.storage.updateBucket('memories', {
-      public: true,
-      fileSizeLimit: 10485760 // 10MB limit
-    });
-    
-    if (updateError) {
-      console.error("Error updating bucket settings:", updateError);
-      return false;
-    } else {
-      console.log("Memories bucket is confirmed public with 10MB limit");
-      return true;
-    }
+    // The bucket should now exist with proper RLS policies
+    console.log("Memories bucket is ready to use");
+    return true;
   } catch (error) {
     console.error("Error managing memories bucket:", error);
     return false;

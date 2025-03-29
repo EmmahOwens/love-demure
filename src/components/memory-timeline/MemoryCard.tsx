@@ -217,24 +217,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
     setIsImageLoaded(false);
   };
   
-  const handleRetryImage = async () => {
-    setIsRetrying(true);
-    setImageError(false);
-    
-    try {
-      // Reset states
-      setImageUrl(null);
-      
-      // Try to find a different image
-      await findMatchingImageInStorage();
-    } catch (error) {
-      console.error('Error retrying image:', error);
-      setImageError(true);
-    } finally {
-      setIsRetrying(false);
-    }
-  };
-  
   return (
     <div className={`flex w-full ${isEven ? 'justify-start' : 'justify-end'} mb-12`}>
       <div 
@@ -289,14 +271,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
           {!imageUrl && !isRetrying && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <Image className="w-10 h-10 text-muted-foreground/60" />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRetryImage}
-                className="text-xs mt-2"
-              >
-                Find image
-              </Button>
             </div>
           )}
           
@@ -319,15 +293,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
           {imageError && imageUrl && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <p className="text-muted-foreground text-sm">Image not available</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRetryImage}
-                disabled={isRetrying}
-                className="text-xs mt-2"
-              >
-                {isRetrying ? 'Searching...' : 'Try another image'}
-              </Button>
             </div>
           )}
         </div>
@@ -341,4 +306,3 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, index, onEdit, onDelete
 };
 
 export default MemoryCard;
-
