@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { supabase, ensureMemoriesBucket } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Upload, X, Calendar, MapPin } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
@@ -28,25 +28,6 @@ const MemoryUploader = () => {
     location: '',
   });
   const { toast } = useToast();
-  const [bucketReady, setBucketReady] = useState(false);
-
-  // Check if the memories bucket exists and create it if needed
-  useEffect(() => {
-    const initBucket = async () => {
-      const ready = await ensureMemoriesBucket();
-      setBucketReady(ready);
-      
-      if (!ready) {
-        toast({
-          title: "Storage setup issue",
-          description: "There was a problem setting up storage. Some features may not work correctly.",
-          variant: "destructive",
-        });
-      }
-    };
-    
-    initBucket();
-  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -111,21 +92,6 @@ const MemoryUploader = () => {
         variant: "destructive",
       });
       return;
-    }
-    
-    if (!bucketReady) {
-      // Try to initialize the bucket one more time
-      const ready = await ensureMemoriesBucket();
-      setBucketReady(ready);
-      
-      if (!ready) {
-        toast({
-          title: "Storage not available",
-          description: "Could not access storage. Please try again later.",
-          variant: "destructive",
-        });
-        return;
-      }
     }
     
     try {

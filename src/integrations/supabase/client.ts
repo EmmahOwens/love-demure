@@ -11,5 +11,4 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
-// NOTE: No longer trying to create the bucket on client initialization
-// This avoids the RLS errors since bucket creation should be done through SQL migrations
+// Note: Bucket creation should be done through SQL migrations, not client-side
